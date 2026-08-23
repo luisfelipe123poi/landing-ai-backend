@@ -49,6 +49,17 @@ async function kvPut(key, value) {
     }
 }
 
+// Función auxiliar para definir tokens iniciales según el plan
+function getTokensForPlan(plan) {
+    switch (plan) {
+        case 'starter': return 3;
+        case 'pro':
+        case 'business': return 999999; // Ilimitados
+        case 'free':
+        default: return 1;
+    }
+}
+
 app.post('/api/register', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -60,12 +71,18 @@ app.post('/api/register', async (req, res) => {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const userData = { passwordHash: hashedPassword, plan: 'free' };
+        const plan = 'free';
+        const userData = { 
+            passwordHash: hashedPassword, 
+            plan: plan,
+            tokens: getTokensForPlan(plan),
+            landings: [] 
+        };
 
         await kvPut(`user_${email}`, userData);
 
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, plan: 'free' });
+        res.json({ success: true, token, plan, tokens: userData.tokens });
     } catch (error) {
         res.status(500).json({ error: 'Error en el servidor' });
     }
@@ -81,7 +98,12 @@ app.post('/api/login', async (req, res) => {
         }
 
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, plan: user.plan });
+        res.json({ 
+            success: true, 
+            token, 
+            plan: user.plan || 'free', 
+            tokens: user.tokens ?? getTokensForPlan(user.plan || 'free') 
+        });
     } catch (error) {
         res.status(500).json({ error: 'Error en el servidor' });
     }
@@ -89,12 +111,22 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/generate', async (req, res) => {
     try {
-        const { business, whatsapp, style } = req.body;
+        const { business, whatsapp, style, customSubdomain } = req.body;
         const authHeader = req.headers.authorization;
 
         if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
+
+        // Buscar datos del usuario
+        const userKey = `user_${decoded.email}`;
+        let user = await kvGet(userKey);
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        // Validar tokens disponibles (excepto si son ilimitados)
+        if (user.tokens !== undefined && user.tokens <= 0) {
+            return res.status(403).json({ error: 'No tienes tokens disponibles. Actualiza tu plan.' });
+        }
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const htmlContent = `
@@ -108,7 +140,7 @@ app.post('/api/generate', async (req, res) => {
             </head>
             <body class="bg-slate-900 text-white font-sans flex flex-col items-center justify-center min-h-screen p-6 text-center">
                 <h1 class="text-4xl font-black mb-4">${business}</h1>
-                <p class="text-slate-300 mb-8 max-w-md">Bienvenido a nuestra página oficial. Contáctanos de inmediato para agendar tu pedido o servicio.</p>
+                <p class="text-slate-300 mb-8 max-w-md">Bienvenido a nuestra página oficial. Estilo seleccionado: ${style}. Contáctanos de inmediato para agendar tu pedido.</p>
                 <a href="https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}" class="px-8 py-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-2xl shadow-xl transition">
                     💬 Chatear por WhatsApp
                 </a>
@@ -116,11 +148,46 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
+        // Generar URL según si tiene subdominio personalizado permitido
+        let landingUrl = `/s/${landingId}`;
+        if (customSubdomain && (user.plan === 'pro' || user.plan === 'business')) {
+            landingUrl = `https://${customSubdomain}.tudominio.com`; // O ajusta según tu estructura de subdominios
+        }
+
+        const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
+
+        // Guardar la landing individual en KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
-        res.json({ success: true, landingId, url: `/s/${landingId}` });
+        // Actualizar datos del usuario (descontar token y agregar a su lista de landings)
+        if (user.tokens > 0 && user.tokens < 999999) {
+            user.tokens -= 1;
+        }
+        if (!user.landings) user.landings = [];
+        user.landings.push(landingInfo);
+
+        await kvPut(userKey, user);
+
+        res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
         res.status(500).json({ error: 'Error al generar la landing' });
+    }
+});
+
+// Endpoint para que el frontend liste las páginas del usuario
+app.get('/api/my-landings', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const user = await kvGet(`user_${decoded.email}`);
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        res.json({ success: true, landings: user.landings || [] });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener las landings' });
     }
 });
 
