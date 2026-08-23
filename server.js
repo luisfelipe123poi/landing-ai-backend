@@ -67,9 +67,8 @@ app.post('/api/generate', async (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // Aquí simularíamos o llamaríamos a OpenAI para generar la landing page HTML
-        // Ejemplo de HTML generado por IA basado en los datos:
-        const landingId = Math.random().toString(36.substring(2, 9));
+        // Corrección aplicada: paréntesis cerrados correctamente en .toString(36)
+        const landingId = Math.random().toString(36).substring(2, 9);
         const htmlContent = `
             <!DOCTYPE html>
             <html lang="es">
