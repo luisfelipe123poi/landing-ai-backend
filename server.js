@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const fetch = require('node-fetch');
 require('dotenv').config();
 
 const app = express();
@@ -16,12 +15,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Credenciales de Cloudflare KV desde las variables de entorno de Render
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
 const CF_KV_NAMESPACE_ID = process.env.CF_KV_NAMESPACE_ID;
 const CF_API_TOKEN = process.env.CF_API_TOKEN;
 
-// Funciones auxiliares para interactuar con Cloudflare KV vía API REST
 async function kvGet(key) {
     if (!CF_ACCOUNT_ID || !CF_KV_NAMESPACE_ID || !CF_API_TOKEN) return null;
     try {
@@ -52,15 +49,11 @@ async function kvPut(key, value) {
     }
 }
 
-// ================= RUTAS DE AUTENTICACIÓN =================
-
-// Registro
 app.post('/api/register', async (req, res) => {
     try {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Faltan datos' });
 
-        // Verificar si el usuario ya existe en KV
         const existingUser = await kvGet(`user_${email}`);
         if (existingUser) {
             return res.status(400).json({ error: 'El usuario ya existe' });
@@ -69,7 +62,6 @@ app.post('/api/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const userData = { passwordHash: hashedPassword, plan: 'free' };
 
-        // Guardar en Cloudflare KV
         await kvPut(`user_${email}`, userData);
 
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
@@ -79,7 +71,6 @@ app.post('/api/register', async (req, res) => {
     }
 });
 
-// Login
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -95,8 +86,6 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Error en el servidor' });
     }
 });
-
-// ================= RUTA DE GENERACIÓN CON IA =================
 
 app.post('/api/generate', async (req, res) => {
     try {
@@ -127,7 +116,6 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
-        // Guardar la landing en Cloudflare KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
         res.json({ success: true, landingId, url: `/s/${landingId}` });
@@ -136,7 +124,6 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// Ruta pública para servir la landing creada desde KV
 app.get('/s/:id', async (req, res) => {
     const landing = await kvGet(`landing_${req.params.id}`);
     if (!landing) return res.status(404).send('Página no encontrada');
