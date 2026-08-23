@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LandingAI — Páginas web con IA para vender por WhatsApp en 1 clic</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    </style>
+</head>
+<body class="bg-[#030712] text-slate-100 antialiased selection:bg-indigo-500 selection:text-white min-h-screen flex flex-col justify-between">
+
+    <!-- HEADER / NAVBAR -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-[#030712]/80 backdrop-blur-xl border-b border-slate-800/60">
+        <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer group" onclick="switchView('home')">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition">
+                    <span class="text-white font-black text-xl">AI</span>
+                </div>
+                <span class="text-xl font-extrabold tracking-tight text-white">Landing<span class="text-indigo-400">Gen</span></span>
+            </div>
+            <nav class="hidden md:flex items-center space-x-8">
+                <a href="#como-funciona" onclick="switchView('home')" class="text-sm font-medium text-slate-400 hover:text-white transition">Cómo funciona</a>
+                <a href="#beneficios" onclick="switchView('home')" class="text-sm font-medium text-slate-400 hover:text-white transition">Ventajas</a>
+                <a href="#precios" onclick="switchView('home')" class="text-sm font-medium text-slate-400 hover:text-white transition">Precios</a>
+            </nav>
+            <div class="flex items-center space-x-4" id="nav-actions">
+                <button onclick="switchView('auth')" class="text-sm font-medium text-slate-300 hover:text-white transition px-4 py-2">Iniciar Sesión</button>
+                <button onclick="switchView('auth'); isRegisterMode=true; updateAuthUI();" class="text-sm font-semibold px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white transition shadow-lg shadow-indigo-600/25">
+                    Empezar Gratis
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENEDOR DE VISTAS DINÁMICAS -->
+    <main class="flex-grow pt-20">
+
+        <!-- ================= VISTA 1: HOME / LANDING & INFO ================= -->
+        <div id="view-home" class="view-section">
+            
+            <!-- HERO SECTION -->
+            <section class="pt-24 pb-20 md:pt-36 md:pb-32 px-6 relative overflow-hidden">
+                <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-indigo-600/15 blur-[140px] rounded-full pointer-events-none"></div>
+                <div class="max-w-5xl mx-auto text-center relative z-10">
+                    <div class="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-semibold uppercase tracking-wider mb-8 shadow-inner">
+                        <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span> Generador Inteligente v2.0
+                    </div>
+                    <h1 class="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight text-white mb-8 leading-[1.1]">
+                        Crea la web de tu negocio para <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-cyan-300 to-teal-300">vender por WhatsApp</span> en segundos
+                    </h1>
+                    <p class="text-lg md:text-xl text-slate-400 mb-12 max-w-2xl mx-auto font-normal leading-relaxed">
+                        Olvídate de agencias costosas y código complejo. Responde 3 preguntas y nuestra IA estructura, diseña y despliega una landing page de alta conversión lista para recibir clientes.
+                    </p>
+                    <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                        <button onclick="handleGetStarted()" class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-base transition shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-3">
+                            <span>Crear mi web ahora</span>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                        </button>
+                        <a href="#como-funciona" class="w-full sm:w-auto px-8 py-4 rounded-2xl bg-slate-900/80 hover:bg-slate-800 border border-slate-800/80 text-slate-300 font-semibold text-base transition">
+                            Conocer más
+                        </a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: CÓMO FUNCIONA (INFO PRO) -->
+            <section id="como-funciona" class="py-24 px-6 border-t border-slate-900/80 bg-slate-950/40">
+                <div class="max-w-6xl mx-auto">
+                    <div class="text-center max-w-2xl mx-auto mb-20">
+                        <h2 class="text-3xl md:text-4xl font-extrabold text-white mb-4">Tan simple como chatear</h2>
+                        <p class="text-slate-400">Automatizamos todo el proceso técnico para que solo te enfoques en atender a tus clientes.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <div class="bg-slate-900/40 border border-slate-800/60 rounded-3xl p-8 relative overflow-hidden group hover:border-indigo-500/40 transition">
+                            <div class="text-5xl font-black text-indigo-500/20 mb-6">01</div>
+                            <h3 class="text-xl font-bold text-white mb-3">Responde 3 Preguntas</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">Indica el nombre de tu emprendimiento, tu número de WhatsApp y los colores o estilo que te representan.</p>
+                        </div>
+                        <div class="bg-slate-900/40 border border-slate-800/60 rounded-3xl p-8 relative overflow-hidden group hover:border-indigo-500/40 transition">
+                            <div class="text-5xl font-black text-indigo-500/20 mb-6">02</div>
+                            <h3 class="text-xl font-bold text-white mb-3">La IA hace la magia</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">Nuestro motor inteligente redacta copys persuasivos, selecciona distribución visual y programa botones de contacto directos.</p>
+                        </div>
+                        <div class="bg-slate-900/40 border border-slate-800/60 rounded-3xl p-8 relative overflow-hidden group hover:border-indigo-500/40 transition">
+                            <div class="text-5xl font-black text-indigo-500/20 mb-6">03</div>
+                            <h3 class="text-xl font-bold text-white mb-3">Comparte y Vende</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed">Obtén un enlace instantáneo optimizado para tus redes sociales (TikTok, Instagram) y empieza a recibir pedidos al instante.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: PRECIOS EN DÓLARES -->
+            <section id="precios" class="py-24 px-6 border-t border-slate-900/80 bg-[#02040a]">
+                <div class="max-w-7xl mx-auto">
+                    <div class="text-center max-w-2xl mx-auto mb-20">
+                        <h2 class="text-3xl md:text-4xl font-extrabold text-white mb-4">Inversión clara y accesible</h2>
+                        <p class="text-slate-400">Escoge el plan ideal para tu negocio en dólares. Sin contratos forzosos.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+                        
+                        <!-- PLAN FREE -->
+                        <div class="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-8 flex flex-col justify-between hover:border-slate-700 transition">
+                            <div>
+                                <div class="text-slate-400 font-bold text-xs uppercase tracking-wider mb-2">Free</div>
+                                <div class="text-4xl font-black text-white mb-4">$0 <span class="text-xs font-normal text-slate-500">/ mes</span></div>
+                                <p class="text-slate-400 text-xs mb-8 leading-relaxed">Para probar la velocidad del motor y lanzar tu primer borrador.</p>
+                                <ul class="space-y-3 text-xs text-slate-300 mb-8">
+                                    <li class="flex items-center gap-2">✓ 1 Landing activa</li>
+                                    <li class="flex items-center gap-2">✓ Subdominio básico</li>
+                                    <li class="flex items-center gap-2">✓ Con marca de agua</li>
+                                </ul>
+                            </div>
+                            <button onclick="switchView('auth')" class="w-full py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-center font-semibold text-xs text-white transition">Empezar Gratis</button>
+                        </div>
+
+                        <!-- PLAN STARTER -->
+                        <div class="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-8 flex flex-col justify-between hover:border-slate-700 transition">
+                            <div>
+                                <div class="text-indigo-400 font-bold text-xs uppercase tracking-wider mb-2">Starter</div>
+                                <div class="text-4xl font-black text-white mb-4">$5 <span class="text-xs font-normal text-slate-500">/ mes</span></div>
+                                <p class="text-slate-400 text-xs mb-8 leading-relaxed">Ideal para pequeños comercios locales independientes.</p>
+                                <ul class="space-y-3 text-xs text-slate-300 mb-8">
+                                    <li class="flex items-center gap-2">✓ Hasta 3 Landing Pages</li>
+                                    <li class="flex items-center gap-2">✓ Sin marca de agua</li>
+                                    <li class="flex items-center gap-2">✓ WhatsApp optimizado</li>
+                                </ul>
+                            </div>
+                            <button onclick="switchView('auth')" class="w-full py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-center font-semibold text-xs text-white transition">Elegir Starter</button>
+                        </div>
+
+                        <!-- PLAN PRO -->
+                        <div class="bg-gradient-to-b from-indigo-950/50 to-slate-900/30 border-2 border-indigo-500/60 rounded-3xl p-8 flex flex-col justify-between relative shadow-2xl shadow-indigo-500/10">
+                            <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-full uppercase tracking-wider shadow-md">Popular</div>
+                            <div>
+                                <div class="text-indigo-400 font-bold text-xs uppercase tracking-wider mb-2">Pro</div>
+                                <div class="text-4xl font-black text-white mb-4">$12 <span class="text-xs font-normal text-slate-500">/ mes</span></div>
+                                <p class="text-slate-400 text-xs mb-8 leading-relaxed">Para marcas que buscan dominio propio y múltiples proyectos.</p>
+                                <ul class="space-y-3 text-xs text-slate-300 mb-8">
+                                    <li class="flex items-center gap-2">✓ Landings ilimitadas</li>
+                                    <li class="flex items-center gap-2">✓ Conexión dominio propio</li>
+                                    <li class="flex items-center gap-2">✓ IA avanzada de diseño</li>
+                                </ul>
+                            </div>
+                            <button onclick="switchView('auth')" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-center font-semibold text-xs text-white transition shadow-lg shadow-indigo-600/30">Elegir Pro</button>
+                        </div>
+
+                        <!-- PLAN BUSINESS -->
+                        <div class="bg-slate-900/30 border border-slate-800/60 rounded-3xl p-8 flex flex-col justify-between hover:border-slate-700 transition">
+                            <div>
+                                <div class="text-cyan-400 font-bold text-xs uppercase tracking-wider mb-2">Business</div>
+                                <div class="text-4xl font-black text-white mb-4">$29 <span class="text-xs font-normal text-slate-500">/ mes</span></div>
+                                <p class="text-slate-400 text-xs mb-8 leading-relaxed">Diseñado para agencias o revendedores de tecnología local.</p>
+                                <ul class="space-y-3 text-xs text-slate-300 mb-8">
+                                    <li class="flex items-center gap-2">✓ Todo lo del plan Pro</li>
+                                    <li class="flex items-center gap-2">✓ Dominios múltiples</li>
+                                    <li class="flex items-center gap-2">✓ Soporte prioritario 24/7</li>
+                                </ul>
+                            </div>
+                            <button onclick="switchView('auth')" class="w-full py-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-center font-semibold text-xs text-white transition">Elegir Business</button>
+                        </div>
+
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ================= VISTA 2: AUTH (LOGIN / REGISTRO CORREO) ================= -->
+        <div id="view-auth" class="view-section hidden py-24 px-6">
+            <div class="max-w-md mx-auto bg-slate-950 border border-slate-800/80 rounded-3xl p-8 md:p-10 shadow-2xl shadow-indigo-500/5">
+                <div class="text-center mb-8">
+                    <h2 id="auth-title" class="text-2xl font-black text-white mb-2">Inicia Sesión</h2>
+                    <p id="auth-subtitle" class="text-slate-400 text-sm">Gestiona tus páginas y crea nuevas con IA</p>
+                </div>
+
+                <form id="auth-form" onsubmit="handleAuthSubmit(event)" class="space-y-5">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Correo electrónico</label>
+                        <input type="email" id="auth-email" required placeholder="tucorreo@dominio.com" class="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Contraseña</label>
+                        <input type="password" id="auth-password" required placeholder="••••••••" class="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition text-sm">
+                    </div>
+                    <button type="submit" id="auth-submit-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold transition shadow-lg shadow-indigo-600/30 text-sm">
+                        Entrar a la plataforma
+                    </button>
+                </form>
+
+                <div class="text-center mt-6">
+                    <button onclick="toggleAuthMode()" id="auth-switch-btn" class="text-sm text-indigo-400 hover:text-indigo-300 transition font-medium">
+                        ¿No tienes cuenta? Regístrate aquí
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VISTA 3: DASHBOARD DE USUARIO ================= -->
+        <div id="view-dashboard" class="view-section hidden py-16 px-6 max-w-5xl mx-auto">
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-12 pb-6 border-b border-slate-800/80">
+                <div>
+                    <h2 class="text-3xl font-extrabold text-white">Panel de Control</h2>
+                    <p class="text-slate-400 text-sm mt-1">Plan actual: <span id="user-plan-badge" class="text-indigo-400 font-bold uppercase">Free</span></p>
+                </div>
+                <button onclick="switchView('builder')" class="px-6 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-sm transition shadow-lg shadow-indigo-600/30 flex items-center gap-2">
+                    ⚡ Crear nueva Landing con IA
+                </button>
+            </div>
+
+            <!-- Listado de Landings del Usuario -->
+            <div class="space-y-6">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider">Tus Páginas Web Activas</h3>
+                <div id="landings-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 flex items-center justify-between hover:border-slate-700 transition">
+                        <div>
+                            <h4 class="font-bold text-white text-base">Barbería El Clásico</h4>
+                            <p class="text-xs text-indigo-400 mt-1">landinggen.com/s/barberia-clasico</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a href="#" target="_blank" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-xl text-slate-200 transition">Ver web</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VISTA 4: EL CONSTRUCTOR DE 3 PREGUNTAS (IA) ================= -->
+        <div id="view-builder" class="view-section hidden py-16 px-6 max-w-xl mx-auto">
+            <div class="bg-slate-950 border border-slate-800/80 rounded-3xl p-8 md:p-10 shadow-2xl">
+                <div class="flex items-center justify-between mb-8">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-white">Generador IA</h2>
+                        <p class="text-slate-400 text-xs mt-1">Configura tu landing en 3 sencillos pasos</p>
+                    </div>
+                    <button onclick="switchView('dashboard')" class="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800">← Volver</button>
+                </div>
+
+                <form onsubmit="handleGenerateLanding(event)" class="space-y-6">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">1. ¿Cómo se llama tu negocio y qué ofreces?</label>
+                        <input type="text" id="b-business" required placeholder="Ej: Pastelería Dulce Tentación, tortas y postres" class="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">2. ¿Cuál es tu número de WhatsApp para pedidos?</label>
+                        <input type="text" id="b-whatsapp" required placeholder="Ej: +573001234567" class="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">3. ¿Qué estilo o colores prefieres?</label>
+                        <input type="text" id="b-style" required placeholder="Ej: Oscuro elegante / Rosa moderno y limpio" class="w-full px-4 py-3.5 bg-slate-900 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition text-sm">
+                    </div>
+                    <button type="submit" id="b-submit-btn" class="w-full py-4 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:opacity-90 text-white font-extrabold transition shadow-xl shadow-indigo-600/30 text-sm">
+                        ✨ Generar Web Mágicamente
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="py-12 border-t border-slate-900/80 text-center text-xs text-slate-500 bg-slate-950/20">
+        <p>&copy; 2026 LandingGen. Todos los derechos reservados.</p>
+    </footer>
+
+    <!-- LÓGICA DE INTERFAZ Y NAVEGACIÓN -->
+    <script>
+        const API_URL = "https://tu-backend-en-render.onrender.com"; 
+        let isRegisterMode = false;
+
+        function switchView(viewName) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            window.scrollTo(0, 0);
+        }
+
+        function handleGetStarted() {
+            const token = localStorage.getItem('token');
+            if (token) {
+                switchView('dashboard');
+            } else {
+                isRegisterMode = true;
+                updateAuthUI();
+                switchView('auth');
+            }
+        }
+
+        function toggleAuthMode() {
+            isRegisterMode = !isRegisterMode;
+            updateAuthUI();
+        }
+
+        function updateAuthUI() {
+            const title = document.getElementById('auth-title');
+            const subtitle = document.getElementById('auth-subtitle');
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const switchBtn = document.getElementById('auth-switch-btn');
+
+            if (isRegisterMode) {
+                title.innerText = "Crea tu cuenta gratis";
+                subtitle.innerText = "Empieza a generar webs para WhatsApp en segundos";
+                submitBtn.innerText = "Registrarse gratis";
+                switchBtn.innerText = "¿Ya tienes cuenta? Inicia sesión";
+            } else {
+                title.innerText = "Inicia Sesión";
+                subtitle.innerText = "Gestiona tus páginas y crea nuevas con IA";
+                submitBtn.innerText = "Entrar a la plataforma";
+                switchBtn.innerText = "¿No tienes cuenta? Regístrate aquí";
+            }
+        }
+
+        async function handleAuthSubmit(event) {
+            event.preventDefault();
+            const email = document.getElementById('auth-email').value;
+            const password = document.getElementById('auth-password').value;
+
+            // Simulación lista para conectar a Render.com vía fetch()
+            alert(isRegisterMode ? "¡Registro simulado con éxito!" : "¡Bienvenido de nuevo!");
+            localStorage.setItem('token', 'fake-jwt-token-123');
+            updateNavLoggedIn();
+            switchView('dashboard');
+        }
+
+        function updateNavLoggedIn() {
+            const navActions = document.getElementById('nav-actions');
+            navActions.innerHTML = `
+                <button onclick="switchView('dashboard')" class="text-sm font-semibold text-slate-300 hover:text-white transition px-4 py-2">Mi Panel</button>
+                <button onclick="handleLogout()" class="text-sm font-semibold px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition">Salir</button>
+            `;
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('token');
+            location.reload();
+        }
+
+        async function handleGenerateLanding(event) {
+            event.preventDefault();
+            const business = document.getElementById('b-business').value;
+            const whatsapp = document.getElementById('b-whatsapp').value;
+            const style = document.getElementById('b-style').value;
+
+            const btn = document.getElementById('b-submit-btn');
+            btn.innerText = "✨ Diseñando con Inteligencia Artificial...";
+            btn.disabled = true;
+
+            setTimeout(() => {
+                alert("¡Landing page generada con éxito!");
+                btn.innerText = "✨ Generar Web Mágicamente";
+                btn.disabled = false;
+                switchView('dashboard');
+            }, 2000);
+        }
+
+        window.onload = () => {
+            if (localStorage.getItem('token')) {
+                updateNavLoggedIn();
+            }
+        };
+    </script>
+</body>
+</html>
