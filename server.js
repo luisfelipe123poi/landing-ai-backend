@@ -112,10 +112,10 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Asegúrate de tener instalado el cliente (ej. npm install openai) o usar fetch nativo hacia la API de OpenAI / Anthropic
 app.post('/api/generate', async (req, res) => {
     try {
-        const { business, whatsapp, style, description } = req.body; // Puedes pedir opcionalmente una breve descripción del negocio
+        // Recibimos datos enriquecidos para que la IA diseñe páginas verdaderamente profesionales
+        const { business, tagline, logoUrl, products, whatsapp, style, description } = req.body;
         const authHeader = req.headers.authorization;
 
         if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
@@ -133,9 +133,36 @@ app.post('/api/generate', async (req, res) => {
         const landingId = Math.random().toString(36).substring(2, 9);
         const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
 
-        // ==========================================
-        // GENERACIÓN DINÁMICA CON INTELIGENCIA ARTIFICIAL
-        // ==========================================
+        // Prompt estructurado de nivel Senior UI/UX para diseños dinámicos y profesionales
+        const systemPrompt = `
+        Eres un diseñador UX/UI de clase mundial y un desarrollador Frontend experto en Tailwind CSS, animaciones web y diseño de alta conversión.
+        Tu trabajo es generar una Landing Page absolutamente HERMOSA, MODERNA, ÚNICA y PROFESIONAL en un único archivo HTML completo.
+        
+        REGLAS DE DISEÑO OBLIGATORIAS:
+        1. Devuelve ÚNICAMENTE código HTML puro (empezando por <!DOCTYPE html> y terminando en </html>). NADA de texto adicional, explicaciones ni bloques de markdown.
+        2. **Estética y Estilo:** Utiliza paletas de colores modernos (fondos oscuros elegantes con gradientes vibrantes en indigo/cyan/emerald, o estilos limpios y minimalistas según se pida), bordes sutiles con opacidad y efectos de cristal (backdrop-blur-md).
+        3. **Animaciones y Transiciones:** Implementa animaciones fluidas con clases de Tailwind (ej. hover:-translate-y-2, transition-all duration-300, shadow-2xl, hover:shadow-indigo-500/20, efectos de escala y botones interactivos).
+        4. **Estructura Completa:** La página DEBE incluir obligatoriamente:
+           - Navbar fija superior con efecto glassmorphism, logotipo/nombre y botón de contacto.
+           - Sección Hero impactante con tipografía de alto impacto, subtítulo persuasivo, llamados a la acción (CTA) destacados.
+           - Sección de Beneficios / Características con tarjetas interactivas e iconos profesionales (puedes usar FontAwesome).
+           - Sección de Productos / Servicios (si se proporcionan, móstralos en cuadrículas modernas con imágenes ilustrativas de Unsplash de alta calidad acordes al nicho).
+           - Sección de Testimonios de clientes satisfechos.
+           - Banner final de llamado a la acción masivo.
+           - Footer profesional.
+        5. **Interactividad WhatsApp:** Todos los botones de llamada a la acción deben redirigir obligatoriamente a: https://wa.me/${cleanWhatsapp}?text=Hola,%20me%20interesa%20obtener%20más%20información%20sobre%20sus%20servicios.
+        `;
+
+        const userPrompt = `
+        Crea una landing page única y deslumbrante para el siguiente negocio:
+        - Nombre: "${business}"
+        - Eslogan / Propuesta: "${tagline || description || 'La mejor solución para ti'}"
+        - Logotipo (URL opcional): "${logoUrl || ''}"
+        - Productos o Servicios clave: "${products || 'Servicios profesionales personalizados'}"
+        - Estilo visual deseado: "${style || 'Moderna, minimalista y de alto impacto con animaciones fluidas'}"
+        - Número de WhatsApp: "${cleanWhatsapp}"
+        `;
+
         let htmlContent = '';
         
         try {
@@ -146,42 +173,30 @@ app.post('/api/generate', async (req, res) => {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'gpt-4o-mini', // O el modelo que prefieras
+                    model: 'gpt-4o', // Usamos gpt-4o para garantizar máxima inteligencia visual y código impecable
                     messages: [
-                        {
-                            role: 'system',
-                            content: `Eres un diseñador web experto y desarrollador frontend especializado en Tailwind CSS. Tu objetivo es crear una landing page moderna, única, hermosa, responsiva y de alta conversión en un solo archivo HTML completo. 
-                            REGLAS ESTRICTAS:
-                            - Devuelve ÚNICAMENTE el código HTML válido (empezando por <!DOCTYPE html> y terminando en </html>), sin texto adicional ni bloques de Markdown tipo \`\`\`html.
-                            - Varía el diseño, los colores de fondo, la tipografía y la estructura según el estilo solicitado para que nunca se repita el mismo diseño.
-                            - Incluye Tailwind CSS mediante CDN (<script src="https://cdn.tailwindcss.com"></script>) y FontAwesome para iconos.
-                            - Usa el número de WhatsApp proporcionado para los botones de contacto con el formato https://wa.me/NUMERO.`
-                        },
-                        {
-                            role: 'user',
-                            content: `Crea una landing page moderna y única para un negocio llamado "${business}". El estilo visual debe ser: "${style || 'moderno y minimalista'}". El número de WhatsApp para los botones de contacto es "${cleanWhatsapp}".`
-                        }
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt }
                     ],
-                    temperature: 0.9 // Temperatura alta para garantizar creatividad y diseños diferentes cada vez
+                    temperature: 0.9 // Alta temperatura para garantizar que cada diseño sea único y creativo
                 })
             });
 
             const aiData = await aiResponse.json();
             htmlContent = aiData.choices[0].message.content.trim();
             
-            // Limpieza por si la IA devuelve bloques de código con markdown
+            // Limpieza de seguridad por si la IA incluye bloques markdown
             htmlContent = htmlContent.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
 
         } catch (aiError) {
             console.error("Error generando con IA, usando fallback:", aiError);
-            // Fallback de emergencia por si falla la API de IA
-            htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${business}</title><script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script></head><body class="bg-slate-900 text-white flex items-center justify-center h-screen"><div class="text-center"><h1 class="text-3xl font-bold mb-4">${business}</h1><a href="[https://wa.me/$](https://wa.me/$){cleanWhatsapp}" class="bg-green-500 px-6 py-3 rounded-xl font-bold">Contactar por WhatsApp</a></div></body></html>`;
+            htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${business}</title><script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script></head><body class="bg-slate-950 text-white flex items-center justify-center h-screen"><div class="text-center"><h1 class="text-4xl font-bold mb-4">${business}</h1><a href="[https://wa.me/$](https://wa.me/$){cleanWhatsapp}" class="bg-emerald-600 px-8 py-4 rounded-xl font-bold shadow-lg">Contactar por WhatsApp</a></div></body></html>`;
         }
 
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
-        // Guardar en KV
+        // Guardar en Cloudflare KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
         // Descontar token y guardar
