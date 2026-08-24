@@ -8,8 +8,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu dominio principal para las landings limpias
-const MAIN_DOMAIN = 'prestigecloser.com';
+// Definición de tu subdominio dedicado para las landings
+const MAIN_DOMAIN = 'landinggen.prestigecloser.com';
 
 app.use(cors({
     origin: '*',
@@ -151,7 +151,7 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
-        // Construcción de la URL limpia usando el dominio principal
+        // Construcción de la URL limpia usando tu subdominio dedicado
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
 
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
