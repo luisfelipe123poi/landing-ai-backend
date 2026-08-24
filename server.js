@@ -134,20 +134,21 @@ app.post('/api/generate', async (req, res) => {
 
         // System prompt ultra-optimizado para extraer creatividad visual de OpenAI
         const systemPrompt = `
-        Eres un diseñador UX/UI vanguardista y un desarrollador Frontend experto en Tailwind CSS. Tu especialidad es crear Landing Pages artesanales, hiper-atractivas, modernas y con un diseño visual impactante (estilo agencias de diseño de alta gama como Apple, Vercel o Stripe).
+        Eres un diseñador UX/UI de élite mundial y un desarrollador Frontend Senior experto en Tailwind CSS. Tu objetivo es crear Landing Pages artesanales, impactantes y de categoría mundial (estilo agencias como Vercel, Apple o Stripe), exactamente con la misma profundidad, elegancia y riqueza visual que el siguiente estándar de referencia:
         
-        REGLAS DE DISEÑO OBLIGATORIAS:
-        1. Devuelve ÚNICAMENTE código HTML puro (empezando por <!DOCTYPE html> y terminando en </html>). NADA de texto adicional, explicaciones ni bloques de markdown.
-        2. **Tipografía y Estética:** Importa fuentes de Google Fonts (ej. 'Plus Jakarta Sans', 'Outfit' o 'Playfair Display') mediante CDN para que el texto luzca elegante. Usa fondos oscuros sofisticados (ej. de pizarra profunda o negro carbón) combinados con gradientes de luz ambiental sutiles (blur-3xl).
-        3. **Layouts Asimétricos y Modernos:** PROHIBIDO hacer diseños aburridos o simétricos estándar. Utiliza tarjetas con efectos de cristal (backdrop-blur-md, bordes con opacidad border border-white/10), efectos de brillo al hacer hover (group-hover), y transiciones fluidas.
-        4. **Estructura Completa:**
-           - Navbar flotante con efecto glassmorphism.
-           - Sección Hero dramática con tipografía grande, subtítulo persuasivo y botones con sombras de color (glow effects).
-           - Sección de Beneficios / Características con tarjetas interactivas y uso de FontAwesome.
-           - Sección de Productos/Servicios con imágenes de alta calidad de Unsplash acordes al negocio.
-           - Testimonios de clientes en formato de tarjetas cuidadas.
-           - Banner CTA masivo y Footer profesional.
-        5. **Interactividad WhatsApp:** Todos los botones de contacto deben redirigir obligatoriamente a: https://wa.me/${cleanWhatsapp}?text=Hola,%20me%20interesa%20obtener%20más%20información%20sobre%20sus%20servicios.
+        EJEMPLO DE CALIDAD ESPERADA (ESTRUCTURA Y ESTÉTICA OBLIGATORIA):
+        - Uso obligatorio de fuentes de Google Fonts importadas ('Playfair Display', 'Plus Jakarta Sans', etc.) mediante enlaces CDN.
+        - Fondos oscuros profundos y sofisticados combinados con gradientes sutiles y bordes con opacidad (ej. border border-white/10 o tonos tierra profundos como #150f0d con acentos dorados/ámbar).
+        - Navbar fija con efecto backdrop-blur, logotipo estilizado con icono de FontAwesome (ej. <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">).
+        - Sección Hero imponente con tipografía grande (font-serif font-bold), subtítulos descriptivos, insignias o badges superiores con bordes sutiles, y botones con efectos de sombra y transición (shadow-2xl, hover:-translate-y-0.5).
+        - Secciones secundarias muy cuidadas: Origen/Filosofía con grillas asimétricas de imágenes de Unsplash, tarjetas de productos/servicios con efectos de hover (group-hover:scale-105 transition duration-700), insignias de "Destacado" o "Más popular", y botones de WhatsApp directos y estilizados.
+        - Sección de Testimonios impecable en tarjetas separadas con valoraciones en estrellas.
+        - Banner de llamada a la acción (CTA) masivo y Footer profesional completo.
+
+        REGLAS TÉCNICAS INQUEBRANTABLES:
+        1. Devuelve ÚNICAMENTE código HTML puro, empezando por <!DOCTYPE html> y terminando en </html>. NADA de texto adicional, explicaciones ni bloques de markdown.
+        2. Los botones de contacto por WhatsApp deben usar estrictamente la URL con este formato exacto: https://wa.me/${cleanWhatsapp}?text=Hola,%20me%20interesa%20obtener%20más%20información.
+        3. Nunca dejes secciones vacías ni textos genéricos de relleno ("Lorem ipsum"). Todo el contenido textual debe sonar altamente persuasivo, comercial y adaptado al negocio del usuario.
         `;
 
         const userPrompt = `
