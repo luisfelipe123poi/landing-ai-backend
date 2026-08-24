@@ -165,7 +165,7 @@ app.post('/api/generate', async (req, res) => {
 
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
-        // Guardar la landing individual en KV
+        // Guardar la landing individual en KV (para que Cloudflare Pages la lea en el borde)
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
         // Actualizar datos del usuario (descontar token y agregar a su lista de landings)
@@ -197,18 +197,6 @@ app.get('/api/my-landings', async (req, res) => {
         res.json({ success: true, landings: user.landings || [] });
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener las landings' });
-    }
-});
-
-app.get('/s/:id', async (req, res) => {
-    try {
-        const landing = await kvGet(`landing_${req.params.id}`);
-        if (!landing) return res.status(404).send('Página no encontrada');
-        
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(landing.htmlContent);
-    } catch (e) {
-        res.status(500).send('Error al cargar la página');
     }
 });
 
