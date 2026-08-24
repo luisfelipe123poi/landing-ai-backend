@@ -16,7 +16,10 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+
+// AUMENTO DE LÍMITE DE TAMAÑO PARA EVITAR ERROR 413 EN IMÁGENES/HTML PESADO
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
 const CF_KV_NAMESPACE_ID = process.env.CF_KV_NAMESPACE_ID;
@@ -72,32 +75,57 @@ const STATIC_TEMPLATES = {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{BUSINESS_NAME}}</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
     </style>
 </head>
-<body class="bg-[#0f0a08] text-slate-100 antialiased selection:bg-amber-500 selection:text-white">
-    <header class="fixed top-0 left-0 right-0 z-50 bg-[#0f0a08]/80 backdrop-blur-xl border-b border-amber-900/20">
+<body class="bg-[#150f0d] text-[#f9f6f0] font-sans selection:bg-[#c88a53] selection:text-white antialiased min-h-screen relative pb-20">
+    <header class="sticky top-0 left-0 w-full z-40 bg-[#150f0d]/85 backdrop-blur-md border-b border-[#33241f]/60">
         <div class="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-            <span class="text-xl font-extrabold tracking-tight text-white">{{BUSINESS_NAME}}</span>
-            <a href="https://wa.me/{{WHATSAPP}}?text=Hola,%20quiero%20hacer%20un%20pedido" target="_blank" class="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition shadow-lg shadow-amber-600/20">Pedir por WhatsApp</a>
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-[#c88a53] to-[#8c5225] flex items-center justify-center shadow-lg">
+                    <i class="fa-solid fa-mug-hot text-white text-lg"></i>
+                </div>
+                <span class="font-serif text-2xl font-bold tracking-wide text-[#f9f6f0]">Café <span class="text-[#dfb17b] italic font-normal">{{BUSINESS_NAME}}</span></span>
+            </div>
+            <a href="https://wa.me/{{WHATSAPP}}?text=Hola,%20quiero%20hacer%20un%20pedido" target="_blank" class="bg-gradient-to-r from-[#c88a53] to-[#ad6d38] text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-xl flex items-center gap-2.5 hover:opacity-90 transition">
+                <i class="fa-brands fa-whatsapp text-base"></i>
+                <span>Pedir por WhatsApp</span>
+            </a>
         </div>
     </header>
-    <main class="pt-32 pb-20 px-6 max-w-5xl mx-auto text-center">
-        <div class="inline-flex items-center gap-2 py-1.5 px-4 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-8">
-            {{TAGLINE}}
+    <main class="relative min-h-[80vh] flex items-center justify-center pt-16 pb-16 overflow-hidden bg-gradient-to-b from-[#150f0d] via-[#1d1411] to-[#150f0d]">
+        <div class="max-w-7xl mx-auto px-6 w-full grid grid-cols-1 lg:grid-cols-12 gap-12 items-center relative z-10">
+            <div class="lg:col-span-7 space-y-6 text-center lg:text-left">
+                <div class="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#33241f]/80 border border-[#c88a53]/30 text-[#dfb17b] text-xs font-semibold tracking-wider uppercase backdrop-blur-sm">
+                    <i class="fa-solid fa-location-dot"></i> <span>{{TAGLINE}}</span>
+                </div>
+                <h1 class="text-4xl sm:text-6xl lg:text-7xl font-serif font-bold tracking-tight leading-[1.1]">
+                    <span>Tradición y el alma del</span> 
+                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-[#dfb17b] via-[#c88a53] to-[#b3723b] italic">café de origen</span>
+                </h1>
+                <p class="text-lg text-[#f9f6f0]/70 max-w-2xl mx-auto lg:mx-0 font-light leading-relaxed">
+                    {{DESCRIPTION}}
+                </p>
+                <div class="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4 pt-4">
+                    <a href="https://wa.me/{{WHATSAPP}}?text=Hola,%20quiero%20hacer%20un%20pedido" target="_blank" class="w-full sm:w-auto bg-gradient-to-r from-[#c88a53] to-[#9e5d2b] text-white px-8 py-4 rounded-full font-bold text-base shadow-2xl flex items-center justify-center gap-3 hover:opacity-90 transition">
+                        <span>Ver Menú por WhatsApp</span>
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="lg:col-span-5 relative">
+                <div class="rounded-3xl overflow-hidden border border-[#4a342e] shadow-2xl bg-[#221915] relative h-[460px]">
+                    <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80" alt="Café Macondo Barista" class="w-full h-full object-cover">
+                </div>
+            </div>
         </div>
-        <h1 class="text-4xl sm:text-6xl font-black tracking-tight text-white mb-6 leading-tight">
-            {{BUSINESS_NAME}}
-        </h1>
-        <p class="text-lg text-slate-400 mb-10 max-w-2xl mx-auto">
-            {{DESCRIPTION}}
-        </p>
-        <a href="https://wa.me/{{WHATSAPP}}?text=Hola,%20quiero%20hacer%20un%20pedido" target="_blank" class="inline-block px-8 py-4 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-extrabold text-base transition shadow-xl shadow-amber-600/30">
-            Realizar Pedido por WhatsApp
-        </a>
     </main>
+    <footer class="py-12 bg-[#0f0a08] border-t border-[#33241f] text-center text-xs text-[#f9f6f0]/50 space-y-2">
+        <p>{{BUSINESS_NAME}} • Todos los derechos reservados © 2026</p>
+    </footer>
 </body>
 </html>`
 };
@@ -168,11 +196,9 @@ app.post('/api/generate', async (req, res) => {
             return res.status(403).json({ error: 'No tienes tokens disponibles. Actualiza tu plan.' });
         }
 
-        // Seleccionar la plantilla estática correspondiente
         let templateHtml = STATIC_TEMPLATES[templateName] || STATIC_TEMPLATES['cafe'];
         const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
 
-        // Reemplazo limpio y rápido de variables en la plantilla
         let htmlContent = templateHtml
             .replace(/\{\{BUSINESS_NAME\}\}/g, business || 'Mi Negocio')
             .replace(/\{\{TAGLINE\}\}/g, tagline || 'Tu mejor opción')
@@ -198,7 +224,7 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// ================= NUEVO ENDPOINT: GUARDAR LANDING EDITADA EN VIVO =================
+// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO (Con soporte hasta 50MB por imágenes en base64)
 app.post('/api/save-custom-landing', async (req, res) => {
     try {
         const { business, htmlContent } = req.body;
@@ -216,7 +242,6 @@ app.post('/api/save-custom-landing', async (req, res) => {
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
         const landingInfo = { landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
 
-        // Guardar el HTML personalizado en Cloudflare KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business: landingInfo.business, htmlContent });
 
         if (!user.landings) user.landings = [];
