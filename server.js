@@ -114,7 +114,6 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/generate', async (req, res) => {
     try {
-        // Recibimos datos enriquecidos para que la IA diseñe páginas verdaderamente profesionales
         const { business, tagline, logoUrl, products, whatsapp, style, description } = req.body;
         const authHeader = req.headers.authorization;
 
@@ -133,28 +132,26 @@ app.post('/api/generate', async (req, res) => {
         const landingId = Math.random().toString(36).substring(2, 9);
         const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
 
-        // Prompt estructurado de nivel Senior UI/UX para diseños dinámicos y profesionales
+        // System prompt ultra-optimizado para extraer creatividad visual de OpenAI
         const systemPrompt = `
-        Eres un diseñador UX/UI de clase mundial y un desarrollador Frontend experto en Tailwind CSS, animaciones web y diseño de alta conversión.
-        Tu trabajo es generar una Landing Page absolutamente HERMOSA, MODERNA, ÚNICA y PROFESIONAL en un único archivo HTML completo.
+        Eres un diseñador UX/UI vanguardista y un desarrollador Frontend experto en Tailwind CSS. Tu especialidad es crear Landing Pages artesanales, hiper-atractivas, modernas y con un diseño visual impactante (estilo agencias de diseño de alta gama como Apple, Vercel o Stripe).
         
         REGLAS DE DISEÑO OBLIGATORIAS:
         1. Devuelve ÚNICAMENTE código HTML puro (empezando por <!DOCTYPE html> y terminando en </html>). NADA de texto adicional, explicaciones ni bloques de markdown.
-        2. **Estética y Estilo:** Utiliza paletas de colores modernos (fondos oscuros elegantes con gradientes vibrantes en indigo/cyan/emerald, o estilos limpios y minimalistas según se pida), bordes sutiles con opacidad y efectos de cristal (backdrop-blur-md).
-        3. **Animaciones y Transiciones:** Implementa animaciones fluidas con clases de Tailwind (ej. hover:-translate-y-2, transition-all duration-300, shadow-2xl, hover:shadow-indigo-500/20, efectos de escala y botones interactivos).
-        4. **Estructura Completa:** La página DEBE incluir obligatoriamente:
-           - Navbar fija superior con efecto glassmorphism, logotipo/nombre y botón de contacto.
-           - Sección Hero impactante con tipografía de alto impacto, subtítulo persuasivo, llamados a la acción (CTA) destacados.
-           - Sección de Beneficios / Características con tarjetas interactivas e iconos profesionales (puedes usar FontAwesome).
-           - Sección de Productos / Servicios (si se proporcionan, móstralos en cuadrículas modernas con imágenes ilustrativas de Unsplash de alta calidad acordes al nicho).
-           - Sección de Testimonios de clientes satisfechos.
-           - Banner final de llamado a la acción masivo.
-           - Footer profesional.
-        5. **Interactividad WhatsApp:** Todos los botones de llamada a la acción deben redirigir obligatoriamente a: https://wa.me/${cleanWhatsapp}?text=Hola,%20me%20interesa%20obtener%20más%20información%20sobre%20sus%20servicios.
+        2. **Tipografía y Estética:** Importa fuentes de Google Fonts (ej. 'Plus Jakarta Sans', 'Outfit' o 'Playfair Display') mediante CDN para que el texto luzca elegante. Usa fondos oscuros sofisticados (ej. de pizarra profunda o negro carbón) combinados con gradientes de luz ambiental sutiles (blur-3xl).
+        3. **Layouts Asimétricos y Modernos:** PROHIBIDO hacer diseños aburridos o simétricos estándar. Utiliza tarjetas con efectos de cristal (backdrop-blur-md, bordes con opacidad border border-white/10), efectos de brillo al hacer hover (group-hover), y transiciones fluidas.
+        4. **Estructura Completa:**
+           - Navbar flotante con efecto glassmorphism.
+           - Sección Hero dramática con tipografía grande, subtítulo persuasivo y botones con sombras de color (glow effects).
+           - Sección de Beneficios / Características con tarjetas interactivas y uso de FontAwesome.
+           - Sección de Productos/Servicios con imágenes de alta calidad de Unsplash acordes al negocio.
+           - Testimonios de clientes en formato de tarjetas cuidadas.
+           - Banner CTA masivo y Footer profesional.
+        5. **Interactividad WhatsApp:** Todos los botones de contacto deben redirigir obligatoriamente a: https://wa.me/${cleanWhatsapp}?text=Hola,%20me%20interesa%20obtener%20más%20información%20sobre%20sus%20servicios.
         `;
 
         const userPrompt = `
-        Crea una landing page única y deslumbrante para el siguiente negocio:
+        Crea una landing page única, orgánica y deslumbrante para el siguiente negocio:
         - Nombre: "${business}"
         - Eslogan / Propuesta: "${tagline || description || 'La mejor solución para ti'}"
         - Logotipo (URL opcional): "${logoUrl || ''}"
@@ -166,47 +163,41 @@ app.post('/api/generate', async (req, res) => {
         let htmlContent = '';
         
         try {
-            const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
+            const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
-                    'x-api-key': process.env.ANTHROPIC_API_KEY,
-                    'anthropic-version': '2023-06-01',
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'claude-3-5-sonnet-20241022', // Claude 3.5 Sonnet para resultados estéticos superiores en frontend
-                    max_tokens: 8192,
-                    system: systemPrompt,
+                    model: 'gpt-4o',
                     messages: [
+                        { role: 'system', content: systemPrompt },
                         { role: 'user', content: userPrompt }
                     ],
-                    temperature: 0.9
+                    temperature: 0.95 // Subimos un poco más la temperatura para exprimir la creatividad de OpenAI
                 })
             });
 
             const aiData = await aiResponse.json();
-
+            
             if (aiData.error) {
-                throw new Error(aiData.error.message || 'Error en la API de Anthropic');
+                throw new Error(aiData.error.message || 'Error en la API de OpenAI');
             }
 
-            htmlContent = aiData.content[0].text.trim();
-            
-            // Limpieza de seguridad por si la IA incluye bloques markdown
+            htmlContent = aiData.choices[0].message.content.trim();
             htmlContent = htmlContent.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
 
         } catch (aiError) {
-            console.error("Error generando con Claude, usando fallback:", aiError);
+            console.error("Error generando con OpenAI, usando fallback:", aiError);
             htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${business}</title><script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script></head><body class="bg-slate-950 text-white flex items-center justify-center h-screen"><div class="text-center"><h1 class="text-4xl font-bold mb-4">${business}</h1><a href="[https://wa.me/$](https://wa.me/$){cleanWhatsapp}" class="bg-emerald-600 px-8 py-4 rounded-xl font-bold shadow-lg">Contactar por WhatsApp</a></div></body></html>`;
         }
 
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
-        // Guardar en Cloudflare KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
-        // Descontar token y guardar
         if (user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
@@ -219,6 +210,7 @@ app.post('/api/generate', async (req, res) => {
         res.status(500).json({ error: 'Error al generar la landing' });
     }
 });
+
 // Endpoint para que el frontend liste las páginas del usuario
 app.get('/api/my-landings', async (req, res) => {
     try {
