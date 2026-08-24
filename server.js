@@ -8,7 +8,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu dominio principal para las landings
+// Definición de tu dominio principal para las landings limpias
 const MAIN_DOMAIN = 'prestigecloser.com';
 
 app.use(cors({
@@ -114,7 +114,7 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/generate', async (req, res) => {
     try {
-        const { business, whatsapp, style, customSubdomain } = req.body;
+        const { business, whatsapp, style } = req.body;
         const authHeader = req.headers.authorization;
 
         if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
@@ -151,17 +151,8 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
-        // Construcción de la URL basada en el plan del usuario usando el dominio principal
-        let landingUrl = '';
-        const isProOrBusiness = (user.plan === 'pro' || user.plan === 'business');
-
-        if (isProOrBusiness && customSubdomain) {
-            const cleanSub = customSubdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
-            landingUrl = `https://${cleanSub}.${MAIN_DOMAIN}/s/${landingId}`;
-        } else {
-            const genericPrefix = user.plan === 'starter' ? 'starter' : 'generico';
-            landingUrl = `https://${genericPrefix}.${MAIN_DOMAIN}/s/${landingId}`;
-        }
+        // Construcción de la URL limpia usando el dominio principal
+        const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
 
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
