@@ -112,60 +112,84 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
+// Asegúrate de tener instalado el cliente (ej. npm install openai) o usar fetch nativo hacia la API de OpenAI / Anthropic
 app.post('/api/generate', async (req, res) => {
     try {
-        const { business, whatsapp, style } = req.body;
+        const { business, whatsapp, style, description } = req.body; // Puedes pedir opcionalmente una breve descripción del negocio
         const authHeader = req.headers.authorization;
 
         if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // Buscar datos del usuario
         const userKey = `user_${decoded.email}`;
         let user = await kvGet(userKey);
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // Validar tokens disponibles (excepto si son ilimitados)
         if (user.tokens !== undefined && user.tokens <= 0) {
             return res.status(403).json({ error: 'No tienes tokens disponibles. Actualiza tu plan.' });
         }
 
         const landingId = Math.random().toString(36).substring(2, 9);
-        const htmlContent = `
-            <!DOCTYPE html>
-            <html lang="es">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>${business}</title>
-                <script src="https://cdn.tailwindcss.com"></script>
-            </head>
-            <body class="bg-slate-900 text-white font-sans flex flex-col items-center justify-center min-h-screen p-6 text-center">
-                <h1 class="text-4xl font-black mb-4">${business}</h1>
-                <p class="text-slate-300 mb-8 max-w-md">Bienvenido a nuestra página oficial. Estilo seleccionado: ${style}. Contáctanos de inmediato para agendar tu pedido.</p>
-                <a href="https://wa.me/${whatsapp.replace(/[^0-9]/g, '')}" class="px-8 py-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-2xl shadow-xl transition">
-                    💬 Chatear por WhatsApp
-                </a>
-            </body>
-            </html>
-        `;
+        const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
 
-        // Construcción de la URL limpia usando tu subdominio dedicado
+        // ==========================================
+        // GENERACIÓN DINÁMICA CON INTELIGENCIA ARTIFICIAL
+        // ==========================================
+        let htmlContent = '';
+        
+        try {
+            const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-mini', // O el modelo que prefieras
+                    messages: [
+                        {
+                            role: 'system',
+                            content: `Eres un diseñador web experto y desarrollador frontend especializado en Tailwind CSS. Tu objetivo es crear una landing page moderna, única, hermosa, responsiva y de alta conversión en un solo archivo HTML completo. 
+                            REGLAS ESTRICTAS:
+                            - Devuelve ÚNICAMENTE el código HTML válido (empezando por <!DOCTYPE html> y terminando en </html>), sin texto adicional ni bloques de Markdown tipo \`\`\`html.
+                            - Varía el diseño, los colores de fondo, la tipografía y la estructura según el estilo solicitado para que nunca se repita el mismo diseño.
+                            - Incluye Tailwind CSS mediante CDN (<script src="https://cdn.tailwindcss.com"></script>) y FontAwesome para iconos.
+                            - Usa el número de WhatsApp proporcionado para los botones de contacto con el formato https://wa.me/NUMERO.`
+                        },
+                        {
+                            role: 'user',
+                            content: `Crea una landing page moderna y única para un negocio llamado "${business}". El estilo visual debe ser: "${style || 'moderno y minimalista'}". El número de WhatsApp para los botones de contacto es "${cleanWhatsapp}".`
+                        }
+                    ],
+                    temperature: 0.9 // Temperatura alta para garantizar creatividad y diseños diferentes cada vez
+                })
+            });
+
+            const aiData = await aiResponse.json();
+            htmlContent = aiData.choices[0].message.content.trim();
+            
+            // Limpieza por si la IA devuelve bloques de código con markdown
+            htmlContent = htmlContent.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
+
+        } catch (aiError) {
+            console.error("Error generando con IA, usando fallback:", aiError);
+            // Fallback de emergencia por si falla la API de IA
+            htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${business}</title><script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script></head><body class="bg-slate-900 text-white flex items-center justify-center h-screen"><div class="text-center"><h1 class="text-3xl font-bold mb-4">${business}</h1><a href="[https://wa.me/$](https://wa.me/$){cleanWhatsapp}" class="bg-green-500 px-6 py-3 rounded-xl font-bold">Contactar por WhatsApp</a></div></body></html>`;
+        }
+
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
-
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
-        // Guardar la landing individual en KV (para que Cloudflare Pages la lea en el borde)
+        // Guardar en KV
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
-        // Actualizar datos del usuario (descontar token y agregar a su lista de landings)
+        // Descontar token y guardar
         if (user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
         if (!user.landings) user.landings = [];
         user.landings.push(landingInfo);
-
         await kvPut(userKey, user);
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
