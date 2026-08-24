@@ -148,10 +148,10 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
-        // Generar URL según si tiene subdominio personalizado permitido
-        let landingUrl = `/s/${landingId}`;
+        // Generar URL absoluta apuntando a Render para evitar redirección al frontend
+        let landingUrl = `https://landing-ai-backend.onrender.com/s/${landingId}`;
         if (customSubdomain && (user.plan === 'pro' || user.plan === 'business')) {
-            landingUrl = `https://${customSubdomain}.tudominio.com`; // O ajusta según tu estructura de subdominios
+            landingUrl = `https://${customSubdomain}.tudominio.com`; 
         }
 
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
@@ -192,9 +192,15 @@ app.get('/api/my-landings', async (req, res) => {
 });
 
 app.get('/s/:id', async (req, res) => {
-    const landing = await kvGet(`landing_${req.params.id}`);
-    if (!landing) return res.status(404).send('Página no encontrada');
-    res.send(landing.htmlContent);
+    try {
+        const landing = await kvGet(`landing_${req.params.id}`);
+        if (!landing) return res.status(404).send('Página no encontrada');
+        
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(landing.htmlContent);
+    } catch (e) {
+        res.status(500).send('Error al cargar la página');
+    }
 });
 
 app.listen(PORT, () => {
