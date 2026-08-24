@@ -270,6 +270,39 @@ app.get('/api/my-landings', async (req, res) => {
     }
 });
 
+// ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
+app.get('/s/:landingId', async (req, res) => {
+    try {
+        const { landingId } = req.params;
+        const landingData = await kvGet(`landing_${landingId}`);
+
+        if (!landingData || !landingData.htmlContent) {
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>Página no encontrada</title>
+                    <script src="https://cdn.tailwindcss.com"></script>
+                </head>
+                <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
+                    <div class="text-center space-y-3">
+                        <h1 class="text-4xl font-bold">404</h1>
+                        <p class="text-slate-400">La página web que buscas no existe o fue eliminada.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
+        // Envía estrictamente el HTML limpio almacenado con encabezado HTML correcto
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(landingData.htmlContent);
+    } catch (error) {
+        res.status(500).send('Error interno del servidor al cargar la página');
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
