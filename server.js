@@ -8,6 +8,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
+// Definición de tu dominio principal para las landings
+const MAIN_DOMAIN = 'prestigecloser.com';
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -148,10 +151,16 @@ app.post('/api/generate', async (req, res) => {
             </html>
         `;
 
-        // Generar URL absoluta apuntando a Render para evitar redirección al frontend
-        let landingUrl = `https://landing-ai-backend.onrender.com/s/${landingId}`;
-        if (customSubdomain && (user.plan === 'pro' || user.plan === 'business')) {
-            landingUrl = `https://${customSubdomain}.tudominio.com`; 
+        // Construcción de la URL basada en el plan del usuario usando el dominio principal
+        let landingUrl = '';
+        const isProOrBusiness = (user.plan === 'pro' || user.plan === 'business');
+
+        if (isProOrBusiness && customSubdomain) {
+            const cleanSub = customSubdomain.toLowerCase().replace(/[^a-z0-9-]/g, '');
+            landingUrl = `https://${cleanSub}.${MAIN_DOMAIN}/s/${landingId}`;
+        } else {
+            const genericPrefix = user.plan === 'starter' ? 'starter' : 'generico';
+            landingUrl = `https://${genericPrefix}.${MAIN_DOMAIN}/s/${landingId}`;
         }
 
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
