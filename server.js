@@ -166,30 +166,37 @@ app.post('/api/generate', async (req, res) => {
         let htmlContent = '';
         
         try {
-            const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            const aiResponse = await fetch('https://api.anthropic.com/v1/messages', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                    'x-api-key': process.env.ANTHROPIC_API_KEY,
+                    'anthropic-version': '2023-06-01',
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    model: 'gpt-4o', // Usamos gpt-4o para garantizar máxima inteligencia visual y código impecable
+                    model: 'claude-3-5-sonnet-20241022', // Claude 3.5 Sonnet para resultados estéticos superiores en frontend
+                    max_tokens: 8192,
+                    system: systemPrompt,
                     messages: [
-                        { role: 'system', content: systemPrompt },
                         { role: 'user', content: userPrompt }
                     ],
-                    temperature: 0.9 // Alta temperatura para garantizar que cada diseño sea único y creativo
+                    temperature: 0.9
                 })
             });
 
             const aiData = await aiResponse.json();
-            htmlContent = aiData.choices[0].message.content.trim();
+
+            if (aiData.error) {
+                throw new Error(aiData.error.message || 'Error en la API de Anthropic');
+            }
+
+            htmlContent = aiData.content[0].text.trim();
             
             // Limpieza de seguridad por si la IA incluye bloques markdown
             htmlContent = htmlContent.replace(/^```html\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '');
 
         } catch (aiError) {
-            console.error("Error generando con IA, usando fallback:", aiError);
+            console.error("Error generando con Claude, usando fallback:", aiError);
             htmlContent = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>${business}</title><script src="[https://cdn.tailwindcss.com](https://cdn.tailwindcss.com)"></script></head><body class="bg-slate-950 text-white flex items-center justify-center h-screen"><div class="text-center"><h1 class="text-4xl font-bold mb-4">${business}</h1><a href="[https://wa.me/$](https://wa.me/$){cleanWhatsapp}" class="bg-emerald-600 px-8 py-4 rounded-xl font-bold shadow-lg">Contactar por WhatsApp</a></div></body></html>`;
         }
 
@@ -212,7 +219,6 @@ app.post('/api/generate', async (req, res) => {
         res.status(500).json({ error: 'Error al generar la landing' });
     }
 });
-
 // Endpoint para que el frontend liste las páginas del usuario
 app.get('/api/my-landings', async (req, res) => {
     try {
