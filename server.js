@@ -198,6 +198,37 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
+// ================= NUEVO ENDPOINT: GUARDAR LANDING EDITADA EN VIVO =================
+app.post('/api/save-custom-landing', async (req, res) => {
+    try {
+        const { business, htmlContent } = req.body;
+        const authHeader = req.headers.authorization;
+
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const userKey = `user_${decoded.email}`;
+        let user = await kvGet(userKey);
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        const landingId = Math.random().toString(36).substring(2, 9);
+        const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
+        const landingInfo = { landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
+
+        // Guardar el HTML personalizado en Cloudflare KV
+        await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business: landingInfo.business, htmlContent });
+
+        if (!user.landings) user.landings = [];
+        user.landings.push(landingInfo);
+        await kvPut(userKey, user);
+
+        res.json({ success: true, landingId, url: landingUrl });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al guardar la página' });
+    }
+});
+
 app.get('/api/my-landings', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
