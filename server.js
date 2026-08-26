@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 require('dotenv').config();
 
 const app = express();
@@ -21,52 +22,38 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-const CF_ACCOUNT_ID = process.env.CF_ACCOUNT_ID;
-const CF_KV_NAMESPACE_ID = process.env.CF_KV_NAMESPACE_ID;
-const CF_API_TOKEN = process.env.CF_API_TOKEN;
+// ================= CONEXIÓN A MONGODB =================
+mongoose.connect(process.env.MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true
+})
+.then(() => console.log('Conectado exitosamente a MongoDB'))
+.catch(err => console.error('Error de conexión a MongoDB:', err));
 
-async function kvGet(key) {
-    if (!CF_ACCOUNT_ID || !CF_KV_NAMESPACE_ID || !CF_API_TOKEN) return null;
-    try {
-        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${key}`, {
-            headers: { 'Authorization': `Bearer ${CF_API_TOKEN}` }
-        });
-        if (!res.ok) return null;
-        return await res.json();
-    } catch (e) {
-        return null;
-    }
-}
+// ================= ESQUEMAS DE MONGOOSE =================
+const landingSchema = new mongoose.Schema({
+    landingId: { type: String, required: true, unique: true },
+    userEmail: { type: String, required: true },
+    business: { type: String },
+    htmlContent: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now }
+});
 
-async function kvPut(key, value) {
-    if (!CF_ACCOUNT_ID || !CF_KV_NAMESPACE_ID || !CF_API_TOKEN) return false;
-    try {
-        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${key}`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': `Bearer ${CF_API_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(value)
-        });
-        return res.ok;
-    } catch (e) {
-        return false;
-    }
-}
+const userSchema = new mongoose.Schema({
+    email: { type: String, required: true, unique: true },
+    passwordHash: { type: String, required: true },
+    plan: { type: String, default: 'free' },
+    tokens: { type: Number, default: 200 },
+    landings: [{
+        landingId: String,
+        business: String,
+        url: String,
+        createdAt: String
+    }]
+});
 
-async function kvDelete(key) {
-    if (!CF_ACCOUNT_ID || !CF_KV_NAMESPACE_ID || !CF_API_TOKEN) return false;
-    try {
-        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${key}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${CF_API_TOKEN}` }
-        });
-        return res.ok;
-    } catch (e) {
-        return false;
-    }
-}
+const Landing = mongoose.model('Landing', landingSchema);
+const User = mongoose.model('User', userSchema);
 
 // Función auxiliar para definir tokens iniciales según el plan
 function getTokensForPlan(plan) {
@@ -148,24 +135,25 @@ app.post('/api/register', async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Faltan datos' });
 
-        const existingUser = await kvGet(`user_${email}`);
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({ error: 'El usuario ya existe' });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
         const plan = 'free';
-        const userData = { 
-            passwordHash: hashedPassword, 
-            plan: plan,
+        const newUser = new User({
+            email,
+            passwordHash: hashedPassword,
+            plan,
             tokens: getTokensForPlan(plan),
-            landings: [] 
-        };
+            landings: []
+        });
 
-        await kvPut(`user_${email}`, userData);
+        await newUser.save();
 
         const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ success: true, token, plan, tokens: userData.tokens });
+        res.json({ success: true, token, plan, tokens: newUser.tokens });
     } catch (error) {
         res.status(500).json({ error: 'Error en el servidor' });
     }
@@ -174,7 +162,7 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await kvGet(`user_${email}`);
+        const user = await User.findOne({ email });
 
         if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
@@ -201,8 +189,7 @@ app.post('/api/generate', async (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const userKey = `user_${decoded.email}`;
-        let user = await kvGet(userKey);
+        let user = await User.findOne({ email: decoded.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         if (user.tokens !== undefined && user.tokens <= 0) {
@@ -220,16 +207,22 @@ app.post('/api/generate', async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
-        const landingInfo = { id: landingId, landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
+        const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
-        await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
+        const newLanding = new Landing({
+            landingId,
+            userEmail: decoded.email,
+            business,
+            htmlContent
+        });
+        await newLanding.save();
 
         if (user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
         if (!user.landings) user.landings = [];
         user.landings.push(landingInfo);
-        await kvPut(userKey, user);
+        await user.save();
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
@@ -237,7 +230,7 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO (Con soporte hasta 50MB por imágenes en base64 y control de tokens)
+// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO
 app.post('/api/save-custom-landing', async (req, res) => {
     try {
         const { business, htmlContent } = req.body;
@@ -247,8 +240,7 @@ app.post('/api/save-custom-landing', async (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const userKey = `user_${decoded.email}`;
-        let user = await kvGet(userKey);
+        let user = await User.findOne({ email: decoded.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         if (user.tokens !== undefined && user.tokens <= 0) {
@@ -257,16 +249,23 @@ app.post('/api/save-custom-landing', async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
-        const landingInfo = { id: landingId, landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
+        const landingBusiness = business || 'Mi Negocio';
+        const landingInfo = { landingId, business: landingBusiness, url: landingUrl, createdAt: new Date().toISOString() };
 
-        await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business: landingInfo.business, htmlContent });
+        const newLanding = new Landing({
+            landingId,
+            userEmail: decoded.email,
+            business: landingBusiness,
+            htmlContent
+        });
+        await newLanding.save();
 
         if (user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
         if (!user.landings) user.landings = [];
         user.landings.push(landingInfo);
-        await kvPut(userKey, user);
+        await user.save();
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
@@ -274,7 +273,7 @@ app.post('/api/save-custom-landing', async (req, res) => {
     }
 });
 
-// ENDPOINTS DE OBTENCIÓN DE LANDINGS (Soporta /api/landings y /api/my-landings)
+// ENDPOINTS DE OBTENCIÓN DE LANDINGS
 const handleGetLandings = async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -282,7 +281,7 @@ const handleGetLandings = async (req, res) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        const user = await kvGet(`user_${decoded.email}`);
+        const user = await User.findOne({ email: decoded.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         res.json({ success: true, landings: user.landings || [] });
@@ -298,7 +297,7 @@ app.get('/api/preview/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
         
-        const landingData = await kvGet(`landing_${landingId}`);
+        const landingData = await Landing.findOne({ landingId });
         if (!landingData || !landingData.htmlContent) {
             return res.status(404).send('Landing no encontrada');
         }
@@ -319,15 +318,14 @@ app.delete('/api/landings/:landingId', async (req, res) => {
         const decoded = jwt.verify(token, JWT_SECRET);
 
         const { landingId } = req.params;
-        const userKey = `user_${decoded.email}`;
-        let user = await kvGet(userKey);
+        let user = await User.findOne({ email: decoded.email });
 
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        user.landings = (user.landings || []).filter(l => (l.landingId !== landingId && l.id !== landingId));
-        await kvPut(userKey, user);
+        user.landings = (user.landings || []).filter(l => l.landingId !== landingId);
+        await user.save();
 
-        await kvDelete(`landing_${landingId}`);
+        await Landing.deleteOne({ landingId });
 
         res.json({ success: true, message: 'Landing eliminada correctamente' });
     } catch (error) {
@@ -339,7 +337,7 @@ app.delete('/api/landings/:landingId', async (req, res) => {
 app.get('/s/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
-        const landingData = await kvGet(`landing_${landingId}`);
+        const landingData = await Landing.findOne({ landingId });
 
         if (!landingData || !landingData.htmlContent) {
             return res.status(404).send(`
