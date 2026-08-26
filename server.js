@@ -287,17 +287,21 @@ const handleGetLandings = async (req, res) => {
 app.get('/api/landings', handleGetLandings);
 app.get('/api/my-landings', handleGetLandings);
 
-// ENDPOINT PARA PREVISUALIZAR UNA LANDING ESPECÍFICA (ID)
 app.get('/api/preview/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
+        console.log(`🔍 [PREVIEW] Buscando clave exacta en KV: landing_${landingId}`); // <-- LOG
+        
         const landingData = await kvGet(`landing_${landingId}`);
         if (!landingData || !landingData.htmlContent) {
+            console.log(`❌ [PREVIEW] No existe la clave landing_${landingId} en Cloudflare`); // <-- LOG
             return res.status(404).send('Landing no encontrada');
         }
+        
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(landingData.htmlContent);
     } catch (error) {
+        console.error("Error al previsualizar:", error);
         res.status(500).send('Error al previsualizar');
     }
 });
