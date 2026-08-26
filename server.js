@@ -75,7 +75,7 @@ function getTokensForPlan(plan) {
         case 'pro':
         case 'business': return 999999; // Ilimitados
         case 'free':
-        default: return 20;
+        default: return 1;
     }
 }
 
