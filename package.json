@@ -1,8 +1,9 @@
 {
   "name": "creador-de-landings",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -16,6 +17,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "mercadopago": "^2.3.0",
     "mongoose": "^8.10.0",
     "openai": "^7.5.0"
   }
