@@ -55,6 +55,19 @@ async function kvPut(key, value) {
     }
 }
 
+async function kvDelete(key) {
+    if (!CF_ACCOUNT_ID || !CF_KV_NAMESPACE_ID || !CF_API_TOKEN) return false;
+    try {
+        const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/storage/kv/namespaces/${CF_KV_NAMESPACE_ID}/values/${key}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${CF_API_TOKEN}` }
+        });
+        return res.ok;
+    } catch (e) {
+        return false;
+    }
+}
+
 // Función auxiliar para definir tokens iniciales según el plan
 function getTokensForPlan(plan) {
     switch (plan) {
@@ -207,7 +220,7 @@ app.post('/api/generate', async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
-        const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
+        const landingInfo = { id: landingId, landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business, htmlContent });
 
@@ -240,7 +253,7 @@ app.post('/api/save-custom-landing', async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
-        const landingInfo = { landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
+        const landingInfo = { id: landingId, landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
 
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business: landingInfo.business, htmlContent });
 
@@ -254,7 +267,8 @@ app.post('/api/save-custom-landing', async (req, res) => {
     }
 });
 
-app.get('/api/my-landings', async (req, res) => {
+// ENDPOINTS DE OBTENCIÓN DE LANDINGS (Soporta /api/landings y /api/my-landings)
+const handleGetLandings = async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
@@ -267,6 +281,51 @@ app.get('/api/my-landings', async (req, res) => {
         res.json({ success: true, landings: user.landings || [] });
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener las landings' });
+    }
+};
+
+app.get('/api/landings', handleGetLandings);
+app.get('/api/my-landings', handleGetLandings);
+
+// ENDPOINT PARA PREVISUALIZAR UNA LANDING ESPECÍFICA (ID)
+app.get('/api/preview/:landingId', async (req, res) => {
+    try {
+        const { landingId } = req.params;
+        const landingData = await kvGet(`landing_${landingId}`);
+        if (!landingData || !landingData.htmlContent) {
+            return res.status(404).send('Landing no encontrada');
+        }
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(landingData.htmlContent);
+    } catch (error) {
+        res.status(500).send('Error al previsualizar');
+    }
+});
+
+// ENDPOINT PARA ELIMINAR UNA LANDING
+app.delete('/api/landings/:landingId', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const { landingId } = req.params;
+        const userKey = `user_${decoded.email}`;
+        let user = await kvGet(userKey);
+
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        // Filtrar la landing del arreglo del usuario
+        user.landings = (user.landings || []).filter(l => (l.landingId !== landingId && l.id !== landingId));
+        await kvPut(userKey, user);
+
+        // Borrar el contenido de la KV de Cloudflare
+        await kvDelete(`landing_${landingId}`);
+
+        res.json({ success: true, message: 'Landing eliminada correctamente' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al eliminar la landing' });
     }
 });
 
