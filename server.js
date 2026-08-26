@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const { MercadoPagoConfig, Preference } = require('mercadopago');
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,12 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
 // Definición de tu subdominio dedicado para las landings
 const MAIN_DOMAIN = 'landinggen.prestigecloser.com';
+
+// ================= CONFIGURACIÓN DE MERCADO PAGO =================
+// Asegúrate de colocar MERCADOPAGO_ACCESS_TOKEN en tu archivo .env
+const client = new MercadoPagoConfig({ 
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || 'TU_ACCESS_TOKEN_PRODUCCION_O_SANDBOX' 
+});
 
 app.use(cors({
     origin: '*',
@@ -179,6 +186,99 @@ app.post('/api/login', async (req, res) => {
         res.status(500).json({ error: 'Error en el servidor' });
     }
 });
+
+// ================= ENDPOINTS DE MERCADO PAGO =================
+
+// 1. Crear preferencia de pago
+app.post('/api/create_preference', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const { planName, price } = req.body; // Ej: planName: 'pro', price: 50000
+        if (!planName || !price) {
+            return res.status(400).json({ error: 'Datos de plan inválidos' });
+        }
+
+        const preference = new Preference(client);
+        
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        title: `Suscripción Plan ${planName.toUpperCase()} - PrestigeCloser`,
+                        quantity: 1,
+                        unit_price: Number(price),
+                        currency_id: 'COP' // Ajusta según tu moneda local (COP, MXN, ARS, etc.)
+                    }
+                ],
+                payer: {
+                    email: decoded.email
+                },
+                metadata: {
+                    user_email: decoded.email,
+                    plan_name: planName
+                },
+                back_urls: {
+                    success: `https://${MAIN_DOMAIN}/dashboard?payment=success`,
+                    failure: `https://${MAIN_DOMAIN}/dashboard?payment=failure`,
+                    pending: `https://${MAIN_DOMAIN}/dashboard?payment=pending`
+                },
+                auto_return: "approved",
+            }
+        });
+
+        res.json({ id: result.id });
+    } catch (error) {
+        console.error("Error al crear preferencia MP:", error);
+        res.status(500).json({ error: "Error al crear la preferencia de pago" });
+    }
+});
+
+// 2. Webhook para recibir notificaciones de pago de Mercado Pago
+app.post('/api/webhook/mercadopago', async (req, res) => {
+    try {
+        const paymentData = req.body;
+        
+        // Mercado Pago envía diferentes tipos de notificaciones
+        if (paymentData.type === 'payment' || paymentData.data?.id) {
+            const paymentId = paymentData.data ? paymentData.data.id : paymentData.id;
+            
+            // Consultar el detalle del pago directamente a la API de Mercado Pago
+            const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
+                }
+            });
+            
+            const payment = await response.json();
+
+            if (payment && payment.status === 'approved') {
+                const userEmail = payment.metadata?.user_email || payment.payer?.email;
+                const planName = payment.metadata?.plan_name || 'pro';
+
+                if (userEmail) {
+                    const user = await User.findOne({ email: userEmail });
+                    if (user) {
+                        user.plan = planName;
+                        user.tokens = getTokensForPlan(planName);
+                        await user.save();
+                        console.log(`Plan actualizado exitosamente para ${userEmail} a ${planName}`);
+                    }
+                }
+            }
+        }
+
+        res.status(200).send('OK');
+    } catch (error) {
+        console.error("Error en Webhook de MP:", error);
+        res.status(500).json({ error: "Error procesando webhook" });
+    }
+});
+
+// ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
 app.post('/api/generate', async (req, res) => {
     try {
