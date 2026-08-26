@@ -237,7 +237,7 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO (Con soporte hasta 50MB por imágenes en base64)
+// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO (Con soporte hasta 50MB por imágenes en base64 y control de tokens)
 app.post('/api/save-custom-landing', async (req, res) => {
     try {
         const { business, htmlContent } = req.body;
@@ -251,17 +251,24 @@ app.post('/api/save-custom-landing', async (req, res) => {
         let user = await kvGet(userKey);
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
+        if (user.tokens !== undefined && user.tokens <= 0) {
+            return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
+        }
+
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
         const landingInfo = { id: landingId, landingId, business: business || 'Mi Negocio', url: landingUrl, createdAt: new Date().toISOString() };
 
         await kvPut(`landing_${landingId}`, { userEmail: decoded.email, business: landingInfo.business, htmlContent });
 
+        if (user.tokens > 0 && user.tokens < 999999) {
+            user.tokens -= 1;
+        }
         if (!user.landings) user.landings = [];
         user.landings.push(landingInfo);
         await kvPut(userKey, user);
 
-        res.json({ success: true, landingId, url: landingUrl });
+        res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
         res.status(500).json({ error: 'Error al guardar la página' });
     }
@@ -290,18 +297,15 @@ app.get('/api/my-landings', handleGetLandings);
 app.get('/api/preview/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
-        console.log(`🔍 [PREVIEW] Buscando clave exacta en KV: landing_${landingId}`); // <-- LOG
         
         const landingData = await kvGet(`landing_${landingId}`);
         if (!landingData || !landingData.htmlContent) {
-            console.log(`❌ [PREVIEW] No existe la clave landing_${landingId} en Cloudflare`); // <-- LOG
             return res.status(404).send('Landing no encontrada');
         }
         
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(landingData.htmlContent);
     } catch (error) {
-        console.error("Error al previsualizar:", error);
         res.status(500).send('Error al previsualizar');
     }
 });
@@ -320,11 +324,9 @@ app.delete('/api/landings/:landingId', async (req, res) => {
 
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // Filtrar la landing del arreglo del usuario
         user.landings = (user.landings || []).filter(l => (l.landingId !== landingId && l.id !== landingId));
         await kvPut(userKey, user);
 
-        // Borrar el contenido de la KV de Cloudflare
         await kvDelete(`landing_${landingId}`);
 
         res.json({ success: true, message: 'Landing eliminada correctamente' });
@@ -358,7 +360,6 @@ app.get('/s/:landingId', async (req, res) => {
             `);
         }
 
-        // Envía estrictamente el HTML limpio almacenado con encabezado HTML correcto
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(landingData.htmlContent);
     } catch (error) {
