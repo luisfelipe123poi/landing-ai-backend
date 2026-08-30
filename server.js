@@ -560,7 +560,6 @@ const PLATINUM_TEMPLATES = [
     { templateId: 'plat-3', title: 'Consultoría Ejecutiva - Elite Authority', category: 'Consulting' }
 ];
 
-// 1. Obtener plantillas Platinum (Permite ver a Platinum y Business)
 app.get('/api/platinum/templates', async (req, res) => {
     try {
         const authHeader = req.headers.authorization;
@@ -571,7 +570,9 @@ app.get('/api/platinum/templates', async (req, res) => {
         const user = await User.findOne({ email: decoded.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // Permitir acceso si el plan es agency_platinum o business
+        // >>> PÓNELO EXACTAMENTE AQUÍ <<<
+        console.log("VALOR REAL EN LA BD - Email:", decoded.email, "| Plan:", user?.plan);
+
         const allowedPlans = ['agency_platinum', 'business'];
         if (!allowedPlans.includes(user.plan)) {
             return res.status(403).json({ error: 'Acceso exclusivo para miembros Plan Business o Agencia Platinum' });
