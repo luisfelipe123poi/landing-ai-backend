@@ -550,3 +550,59 @@ app.post('/api/platinum/rent', verifyToken, verifyPlatinumPlan, async (req, res)
     res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
   }
 });
+
+// ================= ENDPOINTS DEL CATÁLOGO PLATINUM =================
+
+// Simulación o base de datos para las plantillas Platinum exclusivas
+const PLATINUM_TEMPLATES = [
+    { templateId: 'plat-1', title: 'Agencia de Alta Gama - Luxury VSL', category: 'Agency' },
+    { templateId: 'plat-2', title: 'Inmobiliaria Exclusiva - Penthouse Edition', category: 'Real Estate' },
+    { templateId: 'plat-3', title: 'Consultoría Ejecutiva - Elite Authority', category: 'Consulting' }
+];
+
+// 1. Obtener plantillas Platinum (Verifica si el usuario es plan agency_platinum)
+app.get('/api/platinum/templates', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const user = await User.findOne({ email: decoded.email });
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        // Validar si el usuario tiene el plan Platinum activo
+        if (user.plan !== 'agency_platinum') {
+            return res.status(403).json({ error: 'Acceso exclusivo para miembros Plan Agencia Platinum' });
+        }
+
+        // Retornar el catálogo disponible (puedes filtrar las que ya rentó si lo deseas)
+        res.json(PLATINUM_TEMPLATES);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener el catálogo Platinum' });
+    }
+});
+
+// 2. Rentar plantilla en exclusiva (La retira del catálogo o la asigna al usuario)
+app.post('/api/platinum/rent', async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET);
+
+        const { templateId } = req.body;
+        const user = await User.findOne({ email: decoded.email });
+
+        if (!user || user.plan !== 'agency_platinum') {
+            return res.status(403).json({ error: 'Acción no autorizada' });
+        }
+
+        // Lógica de asignación de plantilla exclusiva a la cuenta del usuario
+        // (Aquí puedes registrar la plantilla en su perfil o removerla de una lista global)
+        
+        res.json({ success: true, message: 'Plantilla rentada en exclusiva exitosamente' });
+    } catch (error) {
+        res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
+    }
+});
