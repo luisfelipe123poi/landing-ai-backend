@@ -469,10 +469,14 @@ app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
 
-// Middleware para verificar si el usuario tiene el Plan Agencia Platinum activo
 async function verifyPlatinumPlan(req, res, next) {
   try {
-    const userEmail = req.user.email; // O el método que uses para autenticar con JWT
+    // Validación de seguridad por si el token no fue procesado previamente
+    if (!req.user || !req.user.email) {
+      return res.status(401).json({ error: 'No autorizado. Token faltante o inválido.' });
+    }
+
+    const userEmail = req.user.email; 
     const user = await User.findOne({ email: userEmail });
 
     if (!user || user.subscriptionPlan !== 'agency_platinum' || user.planStatus !== 'active') {
@@ -482,7 +486,8 @@ async function verifyPlatinumPlan(req, res, next) {
     }
     next();
   } catch (error) {
-    res.status(500).json({ error: 'Error al verificar la suscripción' });
+    console.error("DETALLE DEL ERROR EN VERIFY PLATINUM:", error); // Esto mostrará el error exacto en Render
+    res.status(500).json({ error: 'Error al verificar la suscripción: ' + error.message });
   }
 }
 
