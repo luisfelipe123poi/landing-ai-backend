@@ -465,6 +465,101 @@ app.get('/s/:landingId', async (req, res) => {
     }
 });
 
+const express = require('express');
+const axios = require('axios');
+const router = express.Router();
+
+// Endpoint que se ejecuta tras confirmar el pago del usuario
+router.post('/api/domains/provision', async (req, res) => {
+    const { domainName, userEmail, serverTargetIP } = req.body;
+
+    try {
+        // --- PASO A: Comprar dominio con el Registrador (Ej. Namecheap / Porkbun) ---
+        // const registrarRes = await buyFromRegistrar(domainName);
+        // if (!registrarRes.success) throw new Error("Fallo en la compra del dominio");
+
+        // --- PASO B: Crear la Zona en Cloudflare ---
+        const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+        const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+
+        const zoneResponse = await axios.post(
+            'https://api.cloudflare.com/client/v4/zones',
+            {
+                account: { id: cfAccountId },
+                name: domainName,
+                jump_start: true // Cloudflare intentará importar registros DNS existentes
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${cfToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        if (!zoneResponse.data.success) {
+            throw new Error("No se pudo crear la zona en Cloudflare");
+        }
+
+        const zoneId = zoneResponse.data.result.id;
+        const nameServers = zoneResponse.data.result.name_servers; // ej: ns1.cloudflare.com
+
+        // --- PASO C: Configurar el registro A o CNAME principal ---
+        // Apuntando la raíz del dominio (@) a tu servidor o plataforma
+        await axios.post(
+            `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
+            {
+                type: 'A', // O 'CNAME' si usas un subdominio o servicio externo como Render/Vercel
+                name: '@',
+                content: serverTargetIP, // La IP de tu servidor donde corre la app
+                ttl: 1, // Automático
+                proxied: true // ¡Clave! Activa el CDN, seguridad y SSL gratuito de Cloudflare
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${cfToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // --- PASO D: Configurar el registro www ---
+        await axios.post(
+            `https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`,
+            {
+                type: 'CNAME',
+                name: 'www',
+                content: domainName,
+                ttl: 1,
+                proxied: true
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${cfToken}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // Retornamos éxito y los nameservers (por si el registrador requiere actualizar los NS manualmente)
+        return res.json({
+            success: true,
+            message: 'Dominio provisionado y configurado en Cloudflare exitosamente.',
+            domain: domainName,
+            nameServers: nameServers
+        });
+
+    } catch (error) {
+        console.error('Error en provisión de dominio:', error.response?.data || error.message);
+        return res.status(500).json({
+            success: false,
+            error: error.response?.data?.errors || error.message
+        });
+    }
+});
+
+module.exports = router;
+
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
