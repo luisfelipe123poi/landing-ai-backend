@@ -491,29 +491,28 @@ async function verifyPlatinumPlan(req, res, next) {
   }
 }
 
-// 1. Obtener catálogo exclusivo (Solo muestra las que siguen libres)
-app.get('/api/platinum/templates', verifyPlatinumPlan, async (req, res) => {
+// Asegúrate de incluir tu middleware de verificación de token antes de verificar el plan
+app.get('/api/platinum/templates', verifyToken, verifyPlatinumPlan, async (req, res) => {
   try {
     const availableExclusiveTemplates = await ExclusiveTemplate.find({ status: 'available' });
     res.json(availableExclusiveTemplates);
   } catch (error) {
+    console.error("Error en GET /api/platinum/templates:", error);
     res.status(500).json({ error: 'Error al cargar el catálogo exclusivo' });
   }
 });
 
-// 2. Alquilar plantilla exclusiva (La retira del catálogo)
-app.post('/api/platinum/rent', verifyPlatinumPlan, async (req, res) => {
+app.post('/api/platinum/rent', verifyToken, verifyPlatinumPlan, async (req, res) => {
   const { templateId } = req.body;
   const userEmail = req.user.email;
 
   try {
-    // Buscar y bloquear de forma atómica para evitar que dos usuarios la tomen al mismo tiempo
     const template = await ExclusiveTemplate.findOneAndUpdate(
       { templateId: templateId, status: 'available' },
       { 
         status: 'rented',
         rentedBy: userEmail,
-        rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) // Ejemplo: Renta semestral (180 días)
+        rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
       },
       { new: true }
     );
@@ -522,7 +521,6 @@ app.post('/api/platinum/rent', verifyPlatinumPlan, async (req, res) => {
       return res.status(400).json({ error: 'Lo sentimos, esta plantilla acaba de ser alquilada por otro usuario o ya no está disponible.' });
     }
 
-    // Registrar en el perfil del usuario su plantilla exclusiva activa
     await User.findOneAndUpdate(
       { email: userEmail },
       { $push: { activeExclusiveRentals: templateId } }
@@ -530,6 +528,7 @@ app.post('/api/platinum/rent', verifyPlatinumPlan, async (req, res) => {
 
     res.json({ success: true, message: 'Plantilla exclusiva asignada con éxito. Ya es 100% tuya y ha salido del catálogo.', template });
   } catch (error) {
+    console.error("Error en POST /api/platinum/rent:", error);
     res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
   }
 });
