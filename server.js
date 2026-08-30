@@ -468,3 +468,63 @@ app.get('/s/:landingId', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
+
+// Middleware para verificar si el usuario tiene el Plan Agencia Platinum activo
+async function verifyPlatinumPlan(req, res, next) {
+  try {
+    const userEmail = req.user.email; // O el método que uses para autenticar con JWT
+    const user = await User.findOne({ email: userEmail });
+
+    if (!user || user.subscriptionPlan !== 'agency_platinum' || user.planStatus !== 'active') {
+      return res.status(403).json({ 
+        error: 'Acceso denegado. Este catálogo exclusivo es solo para suscriptores del Plan Agencia Platinum ($25 USD/mes).' 
+      });
+    }
+    next();
+  } catch (error) {
+    res.status(500).json({ error: 'Error al verificar la suscripción' });
+  }
+}
+
+// 1. Obtener catálogo exclusivo (Solo muestra las que siguen libres)
+app.get('/api/platinum/templates', verifyPlatinumPlan, async (req, res) => {
+  try {
+    const availableExclusiveTemplates = await ExclusiveTemplate.find({ status: 'available' });
+    res.json(availableExclusiveTemplates);
+  } catch (error) {
+    res.status(500).json({ error: 'Error al cargar el catálogo exclusivo' });
+  }
+});
+
+// 2. Alquilar plantilla exclusiva (La retira del catálogo)
+app.post('/api/platinum/rent', verifyPlatinumPlan, async (req, res) => {
+  const { templateId } = req.body;
+  const userEmail = req.user.email;
+
+  try {
+    // Buscar y bloquear de forma atómica para evitar que dos usuarios la tomen al mismo tiempo
+    const template = await ExclusiveTemplate.findOneAndUpdate(
+      { templateId: templateId, status: 'available' },
+      { 
+        status: 'rented',
+        rentedBy: userEmail,
+        rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000) // Ejemplo: Renta semestral (180 días)
+      },
+      { new: true }
+    );
+
+    if (!template) {
+      return res.status(400).json({ error: 'Lo sentimos, esta plantilla acaba de ser alquilada por otro usuario o ya no está disponible.' });
+    }
+
+    // Registrar en el perfil del usuario su plantilla exclusiva activa
+    await User.findOneAndUpdate(
+      { email: userEmail },
+      { $push: { activeExclusiveRentals: templateId } }
+    );
+
+    res.json({ success: true, message: 'Plantilla exclusiva asignada con éxito. Ya es 100% tuya y ha salido del catálogo.', template });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
+  }
+});
