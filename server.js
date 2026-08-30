@@ -491,6 +491,24 @@ async function verifyPlatinumPlan(req, res, next) {
   }
 }
 
+// Middleware para verificar el token JWT general
+function verifyToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Extrae el token "Bearer <token>"
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Token de autenticación faltante' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Token inválido o expirado' });
+    }
+    req.user = user; // Inyecta los datos decodificados del usuario en req.user
+    next();
+  });
+}
+
 // Asegúrate de incluir tu middleware de verificación de token antes de verificar el plan
 app.get('/api/platinum/templates', verifyToken, verifyPlatinumPlan, async (req, res) => {
   try {
