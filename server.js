@@ -3,7 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const { MercadoPagoConfig, Preference } = require('mercadopago');
+
 require('dotenv').config();
 
 const app = express();
