@@ -459,3 +459,75 @@ app.get('/s/:landingId', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
+
+const { MercadoPagoConfig, Preference } = require('mercadopago');
+
+// Inicializa el cliente con tu Access Token de Mercado Pago
+const client = new MercadoPagoConfig({ accessToken: 'ENV_MERCADO_PAGO_ACCESS_TOKEN' });
+
+app.post('/api/create-preference', async (req, res) => {
+    try {
+        const { itemType, title, price, userEmail } = req.body;
+
+        const preference = new Preference(client);
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        id: itemType,
+                        title: title,
+                        quantity: 1,
+                        unit_price: Number(price),
+                        currency_id: 'USD' // O tu moneda local (ARS, MXN, COP, etc.)
+                    }
+                ],
+                payer: {
+                    email: userEmail || 'comprador@landinggen.com'
+                },
+                back_urls: {
+                    success: 'https://tusitio.com/?status=success&item=' + itemType,
+                    failure: 'https://tusitio.com/?status=failure',
+                    pending: 'https://tusitio.com/?status=pending'
+                },
+                auto_return: 'approved',
+                notification_url: 'https://tu-api.com/api/webhook-mercadopago' // Opcional para webhooks
+            }
+        });
+
+        // Retornamos el link de pago (init_point)
+        res.json({ init_point: result.init_point });
+    } catch (error) {
+        console.error('Error creando preferencia de MP:', error);
+        res.status(500).json({ error: 'No se pudo procesar el pago con Mercado Pago' });
+    }
+});
+
+app.post('/api/webhook-mercadopago', async (req, res) => {
+    const paymentInfo = req.body;
+    
+    // Mercado Pago envía notificaciones de tipo 'payment'
+    if (paymentInfo.type === 'payment' || paymentInfo.topic === 'payment') {
+        const paymentId = paymentInfo.data.id;
+        
+        try {
+            // Consultamos el estado real del pago a la API de Mercado Pago
+            const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+                headers: { 'Authorization': `Bearer ENV_MERCADO_PAGO_ACCESS_TOKEN` }
+            });
+            const paymentData = await response.json();
+
+            if (paymentData.status === 'approved') {
+                const itemType = paymentData.additional_info?.items?.[0]?.id || paymentData.description;
+                const payerEmail = paymentData.payer?.email;
+
+                // AQUÍ ACTUALIZAS TU BASE DE DATOS (MongoDB / SQL):
+                // Buscar al usuario por `payerEmail` y otorgarle el plan o la plantilla `itemType`
+                console.log(`Pago aprobado para ${payerEmail} por el concepto: ${itemType}`);
+            }
+        } catch (error) {
+            console.error('Error validando webhook:', error);
+        }
+    }
+
+    res.status(200).send('OK');
+});
