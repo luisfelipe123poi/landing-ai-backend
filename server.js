@@ -14,7 +14,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 const MAIN_DOMAIN = 'landinggen.prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
-const client = new MercadoPagoConfig({ 
+const mpClient = new MercadoPagoConfig({ 
     accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || 'TU_ACCESS_TOKEN_PRODUCCION_O_SANDBOX' 
 });
 
@@ -462,14 +462,24 @@ app.listen(PORT, () => {
 
 
 
-// Inicializa el cliente con tu Access Token de Mercado Pago
-const client = new MercadoPagoConfig({ accessToken: 'ENV_MERCADO_PAGO_ACCESS_TOKEN' });
+// ================= CONFIGURACIÓN DE MERCADO PAGO =================
+const { MercadoPagoConfig, Preference } = require('mercadopago');
+
+const mpClient = new MercadoPagoConfig({ 
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || 'TU_ACCESS_TOKEN_PRODUCCION_O_SANDBOX' 
+});
 
 app.post('/api/create-preference', async (req, res) => {
     try {
         const { itemType, title, price, userEmail } = req.body;
 
-        const preference = new Preference(client);
+        const preference = new Preference(mpClient);
+        
+        // Detecta automáticamente el protocolo y el dominio actual (Render o Localhost)
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const baseUrl = `${protocol}://${host}`;
+
         const result = await preference.create({
             body: {
                 items: [
@@ -485,12 +495,11 @@ app.post('/api/create-preference', async (req, res) => {
                     email: userEmail || 'comprador@landinggen.com'
                 },
                 back_urls: {
-                    success: 'https://tusitio.com/?status=success&item=' + itemType,
-                    failure: 'https://tusitio.com/?status=failure',
-                    pending: 'https://tusitio.com/?status=pending'
+                    success: `${baseUrl}/?status=success&item=${itemType}`,
+                    failure: `${baseUrl}/?status=failure`,
+                    pending: `${baseUrl}/?status=pending`
                 },
-                auto_return: 'approved',
-                notification_url: 'https://tu-api.com/api/webhook-mercadopago' // Opcional para webhooks
+                auto_return: 'approved'
             }
         });
 
