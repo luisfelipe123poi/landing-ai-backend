@@ -460,7 +460,7 @@ app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
 
-const { MercadoPagoConfig, Preference } = require('mercadopago');
+
 
 // Inicializa el cliente con tu Access Token de Mercado Pago
 const client = new MercadoPagoConfig({ accessToken: 'ENV_MERCADO_PAGO_ACCESS_TOKEN' });
