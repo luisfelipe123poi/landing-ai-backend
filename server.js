@@ -3,6 +3,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const { MercadoPagoConfig, Preference } = require('mercadopago');
 
 require('dotenv').config();
 
@@ -56,6 +57,7 @@ const userSchema = new mongoose.Schema({
         url: String,
         createdAt: String
     }],
+    unlockedPlatinumTemplates: { type: [String], default: [] },
     activeExclusiveRentals: [String]
 });
 
@@ -139,7 +141,6 @@ const STATIC_TEMPLATES = {
 };
 
 // ================= MIDDLEWARES DE AUTENTICACIÓN =================
-
 function verifyToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
@@ -158,7 +159,6 @@ function verifyToken(req, res, next) {
 }
 
 // ================= ENDPOINTS DE AUTENTICACIÓN =================
-
 app.post('/api/register', async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -177,6 +177,7 @@ app.post('/api/register', async (req, res) => {
             plan,
             tokens: getTokensForPlan(plan),
             landings: [],
+            unlockedPlatinumTemplates: [],
             activeExclusiveRentals: []
         });
 
@@ -203,7 +204,8 @@ app.post('/api/login', async (req, res) => {
             success: true, 
             token, 
             plan: user.plan || 'free', 
-            tokens: user.tokens ?? getTokensForPlan(user.plan || 'free') 
+            tokens: user.tokens ?? getTokensForPlan(user.plan || 'free'),
+            unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || []
         });
     } catch (error) {
         res.status(500).json({ error: 'Error en el servidor' });
@@ -212,23 +214,30 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-app.post('/api/create_preference', verifyToken, async (req, res) => {
+// Endpoint unificado para crear preferencias (Planes y Plantillas Platinum)
+app.post('/api/create-preference', verifyToken, async (req, res) => {
     try {
-        const { planName, price } = req.body; 
-        if (!planName || !price) {
-            return res.status(400).json({ error: 'Datos de plan inválidos' });
-        }
-
-        const preference = new Preference(client);
+        const { itemType, title, price, planName } = req.body;
         
+        const finalItemType = itemType || planName;
+        const finalTitle = title || `Suscripción Plan ${String(finalItemType).toUpperCase()} - PrestigeCloser`;
+        const finalPrice = price || (planName === 'agency_platinum' ? 25 : 10);
+
+        const preference = new Preference(mpClient);
+        
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const baseUrl = `${protocol}://${host}`;
+
         const result = await preference.create({
             body: {
                 items: [
                     {
-                        title: `Suscripción Plan ${planName.toUpperCase()} - PrestigeCloser`,
+                        id: finalItemType,
+                        title: finalTitle,
                         quantity: 1,
-                        unit_price: Number(price),
-                        currency_id: 'COP'
+                        unit_price: Number(finalPrice),
+                        currency_id: 'COP' // Cambiar a 'USD' si manejas dólares
                     }
                 ],
                 payer: {
@@ -236,50 +245,62 @@ app.post('/api/create_preference', verifyToken, async (req, res) => {
                 },
                 metadata: {
                     user_email: req.user.email,
-                    plan_name: planName
+                    item_type: finalItemType,
+                    plan_name: finalItemType
                 },
                 back_urls: {
-                    success: `https://${MAIN_DOMAIN}/dashboard?payment=success`,
-                    failure: `https://${MAIN_DOMAIN}/dashboard?payment=failure`,
-                    pending: `https://${MAIN_DOMAIN}/dashboard?payment=pending`
+                    success: `${baseUrl}/?status=success&item=${finalItemType}`,
+                    failure: `${baseUrl}/?status=failure`,
+                    pending: `${baseUrl}/?status=pending`
                 },
-                auto_return: "approved",
+                auto_return: 'approved'
             }
         });
 
-        res.json({ id: result.id });
+        res.json({ init_point: result.init_point, id: result.id });
     } catch (error) {
-        console.error("Error al crear preferencia MP:", error);
-        res.status(500).json({ error: "Error al crear la preferencia de pago" });
+        console.error('Error creando preferencia de MP:', error);
+        res.status(500).json({ error: 'No se pudo procesar el pago con Mercado Pago' });
     }
 });
 
-app.post('/api/webhook/mercadopago', async (req, res) => {
+// Webhook de Mercado Pago para procesar aprobaciones automáticas
+app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
-        const paymentData = req.body;
+        const paymentInfo = req.body;
         
-        if (paymentData.type === 'payment' || paymentData.data?.id) {
-            const paymentId = paymentData.data ? paymentData.data.id : paymentData.id;
+        if (paymentInfo.type === 'payment' || paymentInfo.topic === 'payment' || paymentInfo.data?.id) {
+            const paymentId = paymentInfo.data ? paymentInfo.data.id : paymentInfo.id;
             
             const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
-                }
+                headers: { 'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
             });
             
-            const payment = await response.json();
+            const paymentData = await response.json();
 
-            if (payment && payment.status === 'approved') {
-                const userEmail = payment.metadata?.user_email || payment.payer?.email;
-                const planName = payment.metadata?.plan_name || 'pro';
+            if (paymentData && paymentData.status === 'approved') {
+                const userEmail = paymentData.metadata?.user_email || paymentData.payer?.email;
+                const itemType = paymentData.metadata?.item_type || paymentData.additional_info?.items?.[0]?.id || paymentData.description;
 
                 if (userEmail) {
                     const user = await User.findOne({ email: userEmail });
                     if (user) {
-                        user.plan = planName;
-                        user.tokens = getTokensForPlan(planName);
-                        await user.save();
-                        console.log(`Plan actualizado exitosamente para ${userEmail} a ${planName}`);
+                        if (itemType.startsWith('platinum_template_')) {
+                            const templateKey = itemType.replace('platinum_template_', '');
+                            if (!user.unlockedPlatinumTemplates) {
+                                user.unlockedPlatinumTemplates = [];
+                            }
+                            if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
+                                user.unlockedPlatinumTemplates.push(templateKey);
+                            }
+                            await user.save();
+                            console.log(`Plantilla Platinum '${templateKey}' desbloqueada para ${userEmail}`);
+                        } else {
+                            user.plan = itemType;
+                            user.tokens = getTokensForPlan(itemType);
+                            await user.save();
+                            console.log(`Plan actualizado exitosamente para ${userEmail} a ${itemType}`);
+                        }
                     }
                 }
             }
@@ -287,8 +308,8 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
 
         res.status(200).send('OK');
     } catch (error) {
-        console.error("Error en Webhook de MP:", error);
-        res.status(500).json({ error: "Error procesando webhook" });
+        console.error('Error en Webhook de MP:', error);
+        res.status(500).json({ error: 'Error procesando webhook' });
     }
 });
 
@@ -381,7 +402,7 @@ const handleGetLandings = async (req, res) => {
         const user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        res.json({ success: true, landings: user.landings || [] });
+        res.json({ success: true, landings: user.landings || [], unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || [] });
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener las landings' });
     }
@@ -458,85 +479,4 @@ app.get('/s/:landingId', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
-
-
-
-// ================= CONFIGURACIÓN DE MERCADO PAGO =================
-const { MercadoPagoConfig, Preference } = require('mercadopago');
-
-const mpClient = new MercadoPagoConfig({ 
-    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || 'TU_ACCESS_TOKEN_PRODUCCION_O_SANDBOX' 
-});
-
-app.post('/api/create-preference', async (req, res) => {
-    try {
-        const { itemType, title, price, userEmail } = req.body;
-
-        const preference = new Preference(mpClient);
-        
-        // Detecta automáticamente el protocolo y el dominio actual (Render o Localhost)
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const baseUrl = `${protocol}://${host}`;
-
-        const result = await preference.create({
-            body: {
-                items: [
-                    {
-                        id: itemType,
-                        title: title,
-                        quantity: 1,
-                        unit_price: Number(price),
-                        currency_id: 'USD' // O tu moneda local (ARS, MXN, COP, etc.)
-                    }
-                ],
-                payer: {
-                    email: userEmail || 'comprador@landinggen.com'
-                },
-                back_urls: {
-                    success: `${baseUrl}/?status=success&item=${itemType}`,
-                    failure: `${baseUrl}/?status=failure`,
-                    pending: `${baseUrl}/?status=pending`
-                },
-                auto_return: 'approved'
-            }
-        });
-
-        // Retornamos el link de pago (init_point)
-        res.json({ init_point: result.init_point });
-    } catch (error) {
-        console.error('Error creando preferencia de MP:', error);
-        res.status(500).json({ error: 'No se pudo procesar el pago con Mercado Pago' });
-    }
-});
-
-app.post('/api/webhook-mercadopago', async (req, res) => {
-    const paymentInfo = req.body;
-    
-    // Mercado Pago envía notificaciones de tipo 'payment'
-    if (paymentInfo.type === 'payment' || paymentInfo.topic === 'payment') {
-        const paymentId = paymentInfo.data.id;
-        
-        try {
-            // Consultamos el estado real del pago a la API de Mercado Pago
-            const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                headers: { 'Authorization': `Bearer ENV_MERCADO_PAGO_ACCESS_TOKEN` }
-            });
-            const paymentData = await response.json();
-
-            if (paymentData.status === 'approved') {
-                const itemType = paymentData.additional_info?.items?.[0]?.id || paymentData.description;
-                const payerEmail = paymentData.payer?.email;
-
-                // AQUÍ ACTUALIZAS TU BASE DE DATOS (MongoDB / SQL):
-                // Buscar al usuario por `payerEmail` y otorgarle el plan o la plantilla `itemType`
-                console.log(`Pago aprobado para ${payerEmail} por el concepto: ${itemType}`);
-            }
-        } catch (error) {
-            console.error('Error validando webhook:', error);
-        }
-    }
-
-    res.status(200).send('OK');
 });
