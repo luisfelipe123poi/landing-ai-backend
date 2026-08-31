@@ -14,7 +14,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 const MAIN_DOMAIN = 'landinggen.prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
-// Asegúrate de colocar MERCADOPAGO_ACCESS_TOKEN en tu archivo .env
 const client = new MercadoPagoConfig({ 
     accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || 'TU_ACCESS_TOKEN_PRODUCCION_O_SANDBOX' 
 });
@@ -46,6 +45,15 @@ const landingSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
+const exclusiveTemplateSchema = new mongoose.Schema({
+    templateId: { type: String, required: true, unique: true },
+    title: { type: String, required: true },
+    category: { type: String },
+    status: { type: String, default: 'available' }, // 'available' o 'rented'
+    rentedBy: { type: String, default: null },
+    rentExpiresAt: { type: Date, default: null }
+});
+
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
@@ -56,10 +64,12 @@ const userSchema = new mongoose.Schema({
         business: String,
         url: String,
         createdAt: String
-    }]
+    }],
+    activeExclusiveRentals: [String]
 });
 
 const Landing = mongoose.model('Landing', landingSchema);
+const ExclusiveTemplate = mongoose.model('ExclusiveTemplate', exclusiveTemplateSchema);
 const User = mongoose.model('User', userSchema);
 
 // Función auxiliar para definir tokens iniciales según el plan
@@ -67,7 +77,8 @@ function getTokensForPlan(plan) {
     switch (plan) {
         case 'starter': return 3;
         case 'pro':
-        case 'business': return 999999; // Ilimitados
+        case 'business':
+        case 'agency_platinum': return 999999; // Ilimitados
         case 'free':
         default: return 200;
     }
@@ -125,7 +136,7 @@ const STATIC_TEMPLATES = {
             </div>
             <div class="lg:col-span-5 relative">
                 <div class="rounded-3xl overflow-hidden border border-[#4a342e] shadow-2xl bg-[#221915] relative h-[460px]">
-                    <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80" alt="Café Macondo Barista" class="w-full h-full object-cover">
+                    <img src="https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1000&q=80" alt="Café Barista" class="w-full h-full object-cover">
                 </div>
             </div>
         </div>
@@ -136,6 +147,45 @@ const STATIC_TEMPLATES = {
 </body>
 </html>`
 };
+
+// Inicializador de plantillas exclusivas por defecto si la colección está vacía
+async function seedExclusiveTemplates() {
+    try {
+        const count = await ExclusiveTemplate.countDocuments();
+        if (count === 0) {
+            await ExclusiveTemplate.insertMany([
+                { templateId: 'plat-1', title: 'Agencia de Alta Gama - Luxury VSL', category: 'Agency', status: 'available' },
+                { templateId: 'plat-2', title: 'Inmobiliaria Exclusiva - Penthouse Edition', category: 'Real Estate', status: 'available' },
+                { templateId: 'plat-3', title: 'Consultoría Ejecutiva - Elite Authority', category: 'Consulting', status: 'available' }
+            ]);
+            console.log('Plantillas Platinum inicializadas en la base de datos.');
+        }
+    } catch (error) {
+        console.error('Error al inicializar plantillas Platinum:', error);
+    }
+}
+seedExclusiveTemplates();
+
+// ================= MIDDLEWARES DE AUTENTICACIÓN =================
+
+function verifyToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+  
+    if (!token) {
+        return res.status(401).json({ error: 'Token de autenticación faltante' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            return res.status(403).json({ error: 'Token inválido o expirado' });
+        }
+        req.user = user;
+        next();
+    });
+}
+
+// ================= ENDPOINTS DE AUTENTICACIÓN =================
 
 app.post('/api/register', async (req, res) => {
     try {
@@ -154,7 +204,8 @@ app.post('/api/register', async (req, res) => {
             passwordHash: hashedPassword,
             plan,
             tokens: getTokensForPlan(plan),
-            landings: []
+            landings: [],
+            activeExclusiveRentals: []
         });
 
         await newUser.save();
@@ -189,15 +240,9 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-// 1. Crear preferencia de pago
-app.post('/api/create_preference', async (req, res) => {
+app.post('/api/create_preference', verifyToken, async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        const { planName, price } = req.body; // Ej: planName: 'pro', price: 50000
+        const { planName, price } = req.body; 
         if (!planName || !price) {
             return res.status(400).json({ error: 'Datos de plan inválidos' });
         }
@@ -211,14 +256,14 @@ app.post('/api/create_preference', async (req, res) => {
                         title: `Suscripción Plan ${planName.toUpperCase()} - PrestigeCloser`,
                         quantity: 1,
                         unit_price: Number(price),
-                        currency_id: 'COP' // Ajusta según tu moneda local (COP, MXN, ARS, etc.)
+                        currency_id: 'COP'
                     }
                 ],
                 payer: {
-                    email: decoded.email
+                    email: req.user.email
                 },
                 metadata: {
-                    user_email: decoded.email,
+                    user_email: req.user.email,
                     plan_name: planName
                 },
                 back_urls: {
@@ -237,16 +282,13 @@ app.post('/api/create_preference', async (req, res) => {
     }
 });
 
-// 2. Webhook para recibir notificaciones de pago de Mercado Pago
 app.post('/api/webhook/mercadopago', async (req, res) => {
     try {
         const paymentData = req.body;
         
-        // Mercado Pago envía diferentes tipos de notificaciones
         if (paymentData.type === 'payment' || paymentData.data?.id) {
             const paymentId = paymentData.data ? paymentData.data.id : paymentData.id;
             
-            // Consultar el detalle del pago directamente a la API de Mercado Pago
             const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
                 headers: {
                     'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`
@@ -280,16 +322,11 @@ app.post('/api/webhook/mercadopago', async (req, res) => {
 
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
-app.post('/api/generate', async (req, res) => {
+app.post('/api/generate', verifyToken, async (req, res) => {
     try {
         const { templateName, business, tagline, description, whatsapp } = req.body;
-        const authHeader = req.headers.authorization;
 
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        let user = await User.findOne({ email: decoded.email });
+        let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         if (user.tokens !== undefined && user.tokens <= 0) {
@@ -311,7 +348,7 @@ app.post('/api/generate', async (req, res) => {
 
         const newLanding = new Landing({
             landingId,
-            userEmail: decoded.email,
+            userEmail: req.user.email,
             business,
             htmlContent
         });
@@ -330,17 +367,11 @@ app.post('/api/generate', async (req, res) => {
     }
 });
 
-// ENDPOINT PARA GUARDAR LANDING EDITADA EN VIVO
-app.post('/api/save-custom-landing', async (req, res) => {
+app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
         const { business, htmlContent } = req.body;
-        const authHeader = req.headers.authorization;
 
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        let user = await User.findOne({ email: decoded.email });
+        let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         if (user.tokens !== undefined && user.tokens <= 0) {
@@ -354,7 +385,7 @@ app.post('/api/save-custom-landing', async (req, res) => {
 
         const newLanding = new Landing({
             landingId,
-            userEmail: decoded.email,
+            userEmail: req.user.email,
             business: landingBusiness,
             htmlContent
         });
@@ -373,15 +404,9 @@ app.post('/api/save-custom-landing', async (req, res) => {
     }
 });
 
-// ENDPOINTS DE OBTENCIÓN DE LANDINGS
 const handleGetLandings = async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        const user = await User.findOne({ email: decoded.email });
+        const user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         res.json({ success: true, landings: user.landings || [] });
@@ -390,8 +415,8 @@ const handleGetLandings = async (req, res) => {
     }
 };
 
-app.get('/api/landings', handleGetLandings);
-app.get('/api/my-landings', handleGetLandings);
+app.get('/api/landings', verifyToken, handleGetLandings);
+app.get('/api/my-landings', verifyToken, handleGetLandings);
 
 app.get('/api/preview/:landingId', async (req, res) => {
     try {
@@ -409,16 +434,10 @@ app.get('/api/preview/:landingId', async (req, res) => {
     }
 });
 
-// ENDPOINT PARA ELIMINAR UNA LANDING
-app.delete('/api/landings/:landingId', async (req, res) => {
+app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
         const { landingId } = req.params;
-        let user = await User.findOne({ email: decoded.email });
+        let user = await User.findOne({ email: req.user.email });
 
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
@@ -465,145 +484,66 @@ app.get('/s/:landingId', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
+// ================= ENDPOINTS DEL CATÁLOGO PLATINUM / BUSINESS =================
 
-async function verifyPlatinumPlan(req, res, next) {
-  try {
-    // Validación de seguridad por si el token no fue procesado previamente
-    if (!req.user || !req.user.email) {
-      return res.status(401).json({ error: 'No autorizado. Token faltante o inválido.' });
-    }
-
-    const userEmail = req.user.email; 
-    const user = await User.findOne({ email: userEmail });
-
-    if (!user || user.subscriptionPlan !== 'agency_platinum' || user.planStatus !== 'active') {
-      return res.status(403).json({ 
-        error: 'Acceso denegado. Este catálogo exclusivo es solo para suscriptores del Plan Agencia Platinum ($25 USD/mes).' 
-      });
-    }
-    next();
-  } catch (error) {
-    console.error("DETALLE DEL ERROR EN VERIFY PLATINUM:", error); // Esto mostrará el error exacto en Render
-    res.status(500).json({ error: 'Error al verificar la suscripción: ' + error.message });
-  }
-}
-
-// Middleware para verificar el token JWT general
-function verifyToken(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1]; // Extrae el token "Bearer <token>"
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Token de autenticación faltante' });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ error: 'Token inválido o expirado' });
-    }
-    req.user = user; // Inyecta los datos decodificados del usuario en req.user
-    next();
-  });
-}
-
-// Asegúrate de incluir tu middleware de verificación de token antes de verificar el plan
-app.get('/api/platinum/templates', verifyToken, verifyPlatinumPlan, async (req, res) => {
-  try {
-    const availableExclusiveTemplates = await ExclusiveTemplate.find({ status: 'available' });
-    res.json(availableExclusiveTemplates);
-  } catch (error) {
-    console.error("Error en GET /api/platinum/templates:", error);
-    res.status(500).json({ error: 'Error al cargar el catálogo exclusivo' });
-  }
-});
-
-app.post('/api/platinum/rent', verifyToken, verifyPlatinumPlan, async (req, res) => {
-  const { templateId } = req.body;
-  const userEmail = req.user.email;
-
-  try {
-    const template = await ExclusiveTemplate.findOneAndUpdate(
-      { templateId: templateId, status: 'available' },
-      { 
-        status: 'rented',
-        rentedBy: userEmail,
-        rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
-      },
-      { new: true }
-    );
-
-    if (!template) {
-      return res.status(400).json({ error: 'Lo sentimos, esta plantilla acaba de ser alquilada por otro usuario o ya no está disponible.' });
-    }
-
-    await User.findOneAndUpdate(
-      { email: userEmail },
-      { $push: { activeExclusiveRentals: templateId } }
-    );
-
-    res.json({ success: true, message: 'Plantilla exclusiva asignada con éxito. Ya es 100% tuya y ha salido del catálogo.', template });
-  } catch (error) {
-    console.error("Error en POST /api/platinum/rent:", error);
-    res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
-  }
-});
-
-// ================= ENDPOINTS DEL CATÁLOGO PLATINUM =================
-
-// Simulación o base de datos para las plantillas Platinum exclusivas
-const PLATINUM_TEMPLATES = [
-    { templateId: 'plat-1', title: 'Agencia de Alta Gama - Luxury VSL', category: 'Agency' },
-    { templateId: 'plat-2', title: 'Inmobiliaria Exclusiva - Penthouse Edition', category: 'Real Estate' },
-    { templateId: 'plat-3', title: 'Consultoría Ejecutiva - Elite Authority', category: 'Consulting' }
-];
-
-app.get('/api/platinum/templates', async (req, res) => {
+app.get('/api/platinum/templates', verifyToken, async (req, res) => {
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        const user = await User.findOne({ email: decoded.email });
+        const user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // >>> PÓNELO EXACTAMENTE AQUÍ <<<
-        console.log("VALOR REAL EN LA BD - Email:", decoded.email, "| Plan:", user?.plan);
+        console.log("VALOR REAL EN LA BD - Email:", req.user.email, "| Plan:", user?.plan);
 
         const allowedPlans = ['agency_platinum', 'business'];
         if (!allowedPlans.includes(user.plan)) {
             return res.status(403).json({ error: 'Acceso exclusivo para miembros Plan Business o Agencia Platinum' });
         }
 
-        res.json(PLATINUM_TEMPLATES);
+        const availableExclusiveTemplates = await ExclusiveTemplate.find({ status: 'available' });
+        res.json(availableExclusiveTemplates);
     } catch (error) {
+        console.error("Error en GET /api/platinum/templates:", error);
         res.status(500).json({ error: 'Error al obtener el catálogo Platinum' });
     }
 });
 
-// 2. Rentar plantilla en exclusiva (Permite rentar a Platinum y Business)
-app.post('/api/platinum/rent', async (req, res) => {
+app.post('/api/platinum/rent', verifyToken, async (req, res) => {
+    const { templateId } = req.body;
+    const userEmail = req.user.email;
+
     try {
-        const authHeader = req.headers.authorization;
-        if (!authHeader) return res.status(401).json({ error: 'No autorizado' });
-        const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        const { templateId } = req.body;
-        const user = await User.findOne({ email: decoded.email });
-
+        const user = await User.findOne({ email: userEmail });
         const allowedPlans = ['agency_platinum', 'business'];
+        
         if (!user || !allowedPlans.includes(user.plan)) {
             return res.status(403).json({ error: 'Acción no autorizada para tu plan actual' });
         }
 
-        // Lógica de asignación de plantilla exclusiva a la cuenta del usuario
-        
-        res.json({ success: true, message: 'Plantilla rentada en exclusiva exitosamente' });
+        const template = await ExclusiveTemplate.findOneAndUpdate(
+            { templateId: templateId, status: 'available' },
+            { 
+                status: 'rented',
+                rentedBy: userEmail,
+                rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+            },
+            { new: true }
+        );
+
+        if (!template) {
+            return res.status(400).json({ error: 'Lo sentimos, esta plantilla acaba de ser alquilada por otro usuario o ya no está disponible.' });
+        }
+
+        await User.findOneAndUpdate(
+            { email: userEmail },
+            { $push: { activeExclusiveRentals: templateId } }
+        );
+
+        res.json({ success: true, message: 'Plantilla exclusiva asignada con éxito. Ya es 100% tuya y ha salido del catálogo.', template });
     } catch (error) {
+        console.error("Error en POST /api/platinum/rent:", error);
         res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
     }
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
