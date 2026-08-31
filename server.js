@@ -45,15 +45,6 @@ const landingSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
 });
 
-const exclusiveTemplateSchema = new mongoose.Schema({
-    templateId: { type: String, required: true, unique: true },
-    title: { type: String, required: true },
-    category: { type: String },
-    status: { type: String, default: 'available' }, // 'available' o 'rented'
-    rentedBy: { type: String, default: null },
-    rentExpiresAt: { type: Date, default: null }
-});
-
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
     passwordHash: { type: String, required: true },
@@ -69,7 +60,6 @@ const userSchema = new mongoose.Schema({
 });
 
 const Landing = mongoose.model('Landing', landingSchema);
-const ExclusiveTemplate = mongoose.model('ExclusiveTemplate', exclusiveTemplateSchema);
 const User = mongoose.model('User', userSchema);
 
 // Función auxiliar para definir tokens iniciales según el plan
@@ -147,24 +137,6 @@ const STATIC_TEMPLATES = {
 </body>
 </html>`
 };
-
-// Inicializador de plantillas exclusivas por defecto si la colección está vacía
-async function seedExclusiveTemplates() {
-    try {
-        const count = await ExclusiveTemplate.countDocuments();
-        if (count === 0) {
-            await ExclusiveTemplate.insertMany([
-                { templateId: 'plat-1', title: 'Agencia de Alta Gama - Luxury VSL', category: 'Agency', status: 'available' },
-                { templateId: 'plat-2', title: 'Inmobiliaria Exclusiva - Penthouse Edition', category: 'Real Estate', status: 'available' },
-                { templateId: 'plat-3', title: 'Consultoría Ejecutiva - Elite Authority', category: 'Consulting', status: 'available' }
-            ]);
-            console.log('Plantillas Platinum inicializadas en la base de datos.');
-        }
-    } catch (error) {
-        console.error('Error al inicializar plantillas Platinum:', error);
-    }
-}
-seedExclusiveTemplates();
 
 // ================= MIDDLEWARES DE AUTENTICACIÓN =================
 
@@ -481,66 +453,6 @@ app.get('/s/:landingId', async (req, res) => {
         res.send(landingData.htmlContent);
     } catch (error) {
         res.status(500).send('Error interno del servidor al cargar la página');
-    }
-});
-
-// ================= ENDPOINTS DEL CATÁLOGO PLATINUM / BUSINESS =================
-
-app.get('/api/platinum/templates', verifyToken, async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-        console.log("VALOR REAL EN LA BD - Email:", req.user.email, "| Plan:", user?.plan);
-
-        const allowedPlans = ['agency_platinum', 'business'];
-        if (!allowedPlans.includes(user.plan)) {
-            return res.status(403).json({ error: 'Acceso exclusivo para miembros Plan Business o Agencia Platinum' });
-        }
-
-        const availableExclusiveTemplates = await ExclusiveTemplate.find({ status: 'available' });
-        res.json(availableExclusiveTemplates);
-    } catch (error) {
-        console.error("Error en GET /api/platinum/templates:", error);
-        res.status(500).json({ error: 'Error al obtener el catálogo Platinum' });
-    }
-});
-
-app.post('/api/platinum/rent', verifyToken, async (req, res) => {
-    const { templateId } = req.body;
-    const userEmail = req.user.email;
-
-    try {
-        const user = await User.findOne({ email: userEmail });
-        const allowedPlans = ['agency_platinum', 'business'];
-        
-        if (!user || !allowedPlans.includes(user.plan)) {
-            return res.status(403).json({ error: 'Acción no autorizada para tu plan actual' });
-        }
-
-        const template = await ExclusiveTemplate.findOneAndUpdate(
-            { templateId: templateId, status: 'available' },
-            { 
-                status: 'rented',
-                rentedBy: userEmail,
-                rentExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
-            },
-            { new: true }
-        );
-
-        if (!template) {
-            return res.status(400).json({ error: 'Lo sentimos, esta plantilla acaba de ser alquilada por otro usuario o ya no está disponible.' });
-        }
-
-        await User.findOneAndUpdate(
-            { email: userEmail },
-            { $push: { activeExclusiveRentals: templateId } }
-        );
-
-        res.json({ success: true, message: 'Plantilla exclusiva asignada con éxito. Ya es 100% tuya y ha salido del catálogo.', template });
-    } catch (error) {
-        console.error("Error en POST /api/platinum/rent:", error);
-        res.status(500).json({ error: 'Error al procesar el alquiler exclusivo' });
     }
 });
 
