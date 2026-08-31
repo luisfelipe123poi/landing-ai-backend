@@ -480,3 +480,62 @@ app.get('/s/:landingId', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
+
+// Inicializa el cliente con tu Access Token de Mercado Pago (asegúrate de usar process.env)
+const client = new MercadoPagoConfig({ 
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN 
+});
+
+app.post('/api/create-preference', async (req, res) => {
+    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
+    console.log("Body recibido:", req.body);
+
+    try {
+        const { itemType, title, price, userEmail } = req.body;
+
+        const finalItemType = itemType || 'pro';
+        const finalTitle = title || `Suscripción - LandingGen`;
+        const finalPrice = price || 10;
+        const finalEmail = userEmail || 'comprador@landinggen.com';
+
+        console.log(`Procesando -> Item: ${finalItemType}, Título: ${finalTitle}, Precio: ${finalPrice}, Email: ${finalEmail}`);
+
+        const preference = new Preference(client);
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        id: finalItemType,
+                        title: finalTitle,
+                        quantity: 1,
+                        unit_price: Number(finalPrice),
+                        currency_id: 'COP' // Cambia a 'USD', 'ARS', 'MXN' según tu cuenta de Mercado Pago
+                    }
+                ],
+                payer: {
+                    email: finalEmail
+                },
+                metadata: {
+                    user_email: finalEmail,
+                    item_type: finalItemType
+                },
+                back_urls: {
+                    success: 'https://landinggen.prestigecloser.com/?status=success&item=' + finalItemType,
+                    failure: 'https://landinggen.prestigecloser.com/?status=failure',
+                    pending: 'https://landinggen.prestigecloser.com/?status=pending'
+                },
+                auto_return: 'approved',
+                notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago'
+            }
+        });
+
+        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", result.init_point);
+        res.json({ init_point: result.init_point, id: result.id });
+    } catch (error) {
+        console.error('ERROR CRÍTICO CREANDO PREFERENCIA DE MP:', error);
+        res.status(500).json({ 
+            error: error.message || 'No se pudo procesar el pago con Mercado Pago',
+            details: error.cause || error.toString()
+        });
+    }
+});
