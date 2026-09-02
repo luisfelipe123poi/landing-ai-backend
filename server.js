@@ -214,7 +214,6 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-// ================= ENDPOINT UNIFICADO DE MERCADO PAGO =================
 app.post('/api/create-preference', verifyToken, async (req, res) => {
     console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
     console.log("Body recibido:", req.body);
@@ -245,9 +244,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                         currency_id: 'COP'
                     }
                 ],
-                payer: {
-                    email: finalEmail
-                },
                 metadata: {
                     user_email: finalEmail,
                     item_type: finalItemType,
