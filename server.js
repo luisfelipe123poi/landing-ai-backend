@@ -214,14 +214,20 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-// Endpoint unificado para crear preferencias (Planes y Plantillas Platinum)
+// ================= ENDPOINT UNIFICADO DE MERCADO PAGO =================
 app.post('/api/create-preference', verifyToken, async (req, res) => {
+    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
+    console.log("Body recibido:", req.body);
+
     try {
-        const { itemType, title, price, planName } = req.body;
+        const { itemType, title, price, planName, userEmail } = req.body;
         
-        const finalItemType = itemType || planName;
+        const finalItemType = itemType || planName || 'pro';
         const finalTitle = title || `Suscripción Plan ${String(finalItemType).toUpperCase()} - PrestigeCloser`;
-        const finalPrice = price || (planName === 'agency_platinum' ? 25 : 10);
+        const finalPrice = price || (finalItemType === 'agency_platinum' ? 25 : 10);
+        const finalEmail = userEmail || req.user.email;
+
+        console.log(`Procesando -> Item: ${finalItemType}, Título: ${finalTitle}, Precio: ${finalPrice}, Email: ${finalEmail}`);
 
         const preference = new Preference(mpClient);
         
@@ -237,14 +243,14 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                         title: finalTitle,
                         quantity: 1,
                         unit_price: Number(finalPrice),
-                        currency_id: 'COP' // Cambiar a 'USD' si manejas dólares
+                        currency_id: 'COP'
                     }
                 ],
                 payer: {
-                    email: req.user.email
+                    email: finalEmail
                 },
                 metadata: {
-                    user_email: req.user.email,
+                    user_email: finalEmail,
                     item_type: finalItemType,
                     plan_name: finalItemType
                 },
@@ -253,14 +259,19 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                     failure: `${baseUrl}/?status=failure`,
                     pending: `${baseUrl}/?status=pending`
                 },
-                auto_return: 'approved'
+                auto_return: 'approved',
+                notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago'
             }
         });
 
+        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", result.init_point);
         res.json({ init_point: result.init_point, id: result.id });
     } catch (error) {
-        console.error('Error creando preferencia de MP:', error);
-        res.status(500).json({ error: 'No se pudo procesar el pago con Mercado Pago' });
+        console.error('ERROR CRÍTICO CREANDO PREFERENCIA DE MP:', error);
+        res.status(500).json({ 
+            error: error.message || 'No se pudo procesar el pago con Mercado Pago',
+            details: error.cause || error.toString()
+        });
     }
 });
 
@@ -486,56 +497,4 @@ const client = new MercadoPagoConfig({
     accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN 
 });
 
-app.post('/api/create-preference', async (req, res) => {
-    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
-    console.log("Body recibido:", req.body);
 
-    try {
-        const { itemType, title, price, userEmail } = req.body;
-
-        const finalItemType = itemType || 'pro';
-        const finalTitle = title || `Suscripción - LandingGen`;
-        const finalPrice = price || 10;
-        const finalEmail = userEmail || 'comprador@landinggen.com';
-
-        console.log(`Procesando -> Item: ${finalItemType}, Título: ${finalTitle}, Precio: ${finalPrice}, Email: ${finalEmail}`);
-
-        const preference = new Preference(client);
-        const result = await preference.create({
-            body: {
-                items: [
-                    {
-                        id: finalItemType,
-                        title: finalTitle,
-                        quantity: 1,
-                        unit_price: Number(finalPrice),
-                        currency_id: 'COP' // Cambia a 'USD', 'ARS', 'MXN' según tu cuenta de Mercado Pago
-                    }
-                ],
-                payer: {
-                    email: finalEmail
-                },
-                metadata: {
-                    user_email: finalEmail,
-                    item_type: finalItemType
-                },
-                back_urls: {
-                    success: 'https://landinggen.prestigecloser.com/?status=success&item=' + finalItemType,
-                    failure: 'https://landinggen.prestigecloser.com/?status=failure',
-                    pending: 'https://landinggen.prestigecloser.com/?status=pending'
-                },
-                auto_return: 'approved',
-                notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago'
-            }
-        });
-
-        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", result.init_point);
-        res.json({ init_point: result.init_point, id: result.id });
-    } catch (error) {
-        console.error('ERROR CRÍTICO CREANDO PREFERENCIA DE MP:', error);
-        res.status(500).json({ 
-            error: error.message || 'No se pudo procesar el pago con Mercado Pago',
-            details: error.cause || error.toString()
-        });
-    }
-});
