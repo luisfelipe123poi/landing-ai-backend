@@ -490,10 +490,3 @@ app.get('/s/:landingId', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
-
-// Inicializa el cliente con tu Access Token de Mercado Pago (asegúrate de usar process.env)
-const client = new MercadoPagoConfig({ 
-    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN 
-});
-
-
