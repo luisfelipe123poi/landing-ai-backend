@@ -231,9 +231,8 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const preference = new Preference(mpClient);
         
-        const protocol = req.protocol;
-        const host = req.get('host');
-        const baseUrl = `${protocol}://${host}`;
+        // URL base fija y segura para evitar fallos de proxy en Render y cumplir con los back_urls
+        const baseUrl = 'https://landinggen.prestigecloser.com';
 
         const result = await preference.create({
             body: {
