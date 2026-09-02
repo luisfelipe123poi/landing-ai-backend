@@ -238,8 +238,8 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             body: {
                 items: [
                     {
-                        id: finalItemType,
-                        title: finalTitle,
+                        id: 'template_purchase',
+                        title: `Plantilla Platinum: ${finalItemType.replace('platinum_template_', '')} - PrestigeCloser`,
                         quantity: 1,
                         unit_price: Number(finalPrice),
                         currency_id: 'COP'
