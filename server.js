@@ -144,7 +144,7 @@ const STATIC_TEMPLATES = {
 function verifyToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-  
+ 
     if (!token) {
         return res.status(401).json({ error: 'Token de autenticación faltante' });
     }
@@ -231,15 +231,15 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const preference = new Preference(mpClient);
         
-        // URL base fija y segura para evitar fallos de proxy en Render y cumplir con los back_urls
+        // URL base fija y segura apuntando a tu subdominio de producción principal
         const baseUrl = 'https://landinggen.prestigecloser.com';
 
         const result = await preference.create({
             body: {
                 items: [
                     {
-                        id: 'template_purchase',
-                        title: `Plantilla Platinum: ${finalItemType.replace('platinum_template_', '')} - PrestigeCloser`,
+                        id: String(finalItemType),
+                        title: finalTitle,
                         quantity: 1,
                         unit_price: Number(finalPrice),
                         currency_id: 'COP'
