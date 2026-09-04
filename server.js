@@ -215,7 +215,7 @@ app.post('/api/login', async (req, res) => {
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
 app.post('/api/create-preference', verifyToken, async (req, res) => {
-    console.log("--- RECIBIDA PETICIÓN /api/crear-preferencia-pago ---");
+    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
     console.log("Body recibido:", req.body);
 
     try {
@@ -228,18 +228,20 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // Mapeo idéntico al que te funciona
+        // Mapeo actualizado con todos tus planes (Pro y Agencia Platinum)
         const preciosPlanes = {
             "basico": { nombre: "Plan Básico", precio: 10000, tokens: 50000 },
             "profesional": { nombre: "Plan Profesional", precio: 25000, tokens: 150000 },
             "corporativo": { nombre: "Plan Corporativo", precio: 50000, tokens: 500000 },
-            "pro": { nombre: "Plan Pro", precio: 25000, tokens: 150000 }
+            "pro": { nombre: "Plan Pro Negocios", precio: 40000, tokens: 150000 }, // Ajusta el precio en COP si lo manejas en pesos (ej. $10 USD aprox) o usa tu lógica
+            "agency_platinum": { nombre: "Plan Agencia Platinum", precio: 100000, tokens: 500000 } // Ajusta el precio en COP (ej. $25 USD aprox)
         };
 
+        // Si el plan recibido no existe en el diccionario, por defecto usa "pro"
         const planId = preciosPlanes[planRaw] ? planRaw : "pro";
         const infoPlan = preciosPlanes[planId];
 
-        // Estructura de preferencia idéntica a la que te funciona en Python
+        // Estructura de preferencia enviando el precio y título dinámico correspondiente
         const preferenceData = {
             body: {
                 items: [
@@ -266,7 +268,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         const preference = new Preference(mpClient);
         const result = await preference.create(preferenceData);
 
-        // Extracción segura compatible con la respuesta de Mercado Pago
         const initPoint = result.init_point || result.sandbox_init_point;
         
         if (!initPoint) {
@@ -295,7 +296,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
             const paymentId = body.data?.id || body.id;
             
             if (paymentId) {
-                // Consulta directa al API oficial de MP tal como lo haces en ActaPro
                 const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
                     headers: { 'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
                 });
@@ -321,8 +321,14 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         const user = await User.findOne({ email: payerEmail });
                         if (user) {
                             user.plan = planDesdeRef;
-                            // Asignar tokens según el plan
-                            user.tokens = planDesdeRef === 'corporativo' ? 500000 : 150000;
+                            // Asignación de tokens dinámica según el plan adquirido
+                            if (planDesdeRef === 'agency_platinum') {
+                                user.tokens = 500000;
+                            } else if (planDesdeRef === 'corporativo') {
+                                user.tokens = 500000;
+                            } else {
+                                user.tokens = 150000;
+                            }
                             await user.save();
                             console.log(`Licencia de ${payerEmail} actualizada a ${planDesdeRef} exitosamente.`);
                         }
