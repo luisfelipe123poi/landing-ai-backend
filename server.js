@@ -214,7 +214,7 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-app.post('/api/crear-preferencia-pago', verifyToken, async (req, res) => {
+app.post('/api/create-preference', verifyToken, async (req, res) => {
     console.log("--- RECIBIDA PETICIÓN /api/crear-preferencia-pago ---");
     console.log("Body recibido:", req.body);
 
