@@ -244,6 +244,9 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                         currency_id: 'COP'
                     }
                 ],
+                payer: {
+                    email: finalEmail
+                },
                 metadata: {
                     user_email: finalEmail,
                     item_type: finalItemType,
@@ -259,8 +262,21 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             }
         });
 
-        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", result.init_point);
-        res.json({ init_point: result.init_point, id: result.id });
+        // Validamos que la URL exista para evitar cualquier valor undefined
+        const checkoutUrl = result.init_point || result.sandbox_init_point;
+        if (!checkoutUrl) {
+            throw new Error('Mercado Pago no generó un punto de inicio válido.');
+        }
+
+        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", checkoutUrl);
+        
+        // Enviamos ambas nomenclaturas por seguridad para que tu frontend la lea sin fallos
+        res.json({ 
+            success: true, 
+            init_point: checkoutUrl, 
+            initPoint: checkoutUrl, 
+            id: result.id 
+        });
     } catch (error) {
         console.error('ERROR CRÍTICO CREANDO PREFERENCIA DE MP:', error);
         res.status(500).json({ 
