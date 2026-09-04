@@ -224,7 +224,10 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         const finalItemType = itemType || planName || 'pro';
         const finalTitle = title || `Suscripción Plan ${String(finalItemType).toUpperCase()} - PrestigeCloser`;
         const finalPrice = price || (finalItemType === 'agency_platinum' ? 25 : 10);
-        const finalEmail = userEmail || req.user.email;
+        
+        // Se prioriza el correo que viene del frontend (capturado por prompt o localStorage) 
+        // y se respalda con el del token del usuario autenticado o uno genérico de seguridad.
+        const finalEmail = userEmail || req.user?.email || "cliente@landinggen.com";
 
         console.log(`Procesando -> Item: ${finalItemType}, Título: ${finalTitle}, Precio: ${finalPrice}, Email: ${finalEmail}`);
 
