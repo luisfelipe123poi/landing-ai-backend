@@ -214,119 +214,117 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
-app.post('/api/create-preference', verifyToken, async (req, res) => {
-    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
+app.post('/api/crear-preferencia-pago', verifyToken, async (req, res) => {
+    console.log("--- RECIBIDA PETICIÓN /api/crear-preferencia-pago ---");
     console.log("Body recibido:", req.body);
 
     try {
-        const { itemType, title, price, planName, userEmail } = req.body;
+        const { planName, email } = req.body;
         
-        const finalItemType = itemType || planName || 'pro';
-        const finalTitle = title || `Suscripción Plan ${String(finalItemType).toUpperCase()} - PrestigeCloser`;
-        const finalPrice = price || (finalItemType === 'agency_platinum' ? 25 : 10);
-        
-        // Se prioriza el correo que viene del frontend (capturado por prompt o localStorage) 
-        // y se respalda con el del token del usuario autenticado o uno genérico de seguridad.
-        const finalEmail = userEmail || req.user?.email || "cliente@landinggen.com";
+        const emailCliente = (email || req.user?.email || "").trim().toLowerCase();
+        if (!emailCliente) {
+            return res.status(400).json({ error: "El correo electrónico es requerido para procesar el pago." });
+        }
 
-        console.log(`Procesando -> Item: ${finalItemType}, Título: ${finalTitle}, Precio: ${finalPrice}, Email: ${finalEmail}`);
+        const planRaw = (planName || "pro").toLowerCase().trim();
 
-        const preference = new Preference(mpClient);
-        
-        // URL base fija y segura apuntando a tu subdominio de producción principal
-        const baseUrl = 'https://landinggen.prestigecloser.com';
+        // Mapeo idéntico al que te funciona
+        const preciosPlanes = {
+            "basico": { nombre: "Plan Básico", precio: 10000, tokens: 50000 },
+            "profesional": { nombre: "Plan Profesional", precio: 25000, tokens: 150000 },
+            "corporativo": { nombre: "Plan Corporativo", precio: 50000, tokens: 500000 },
+            "pro": { nombre: "Plan Pro", precio: 25000, tokens: 150000 }
+        };
 
-        const result = await preference.create({
+        const planId = preciosPlanes[planRaw] ? planRaw : "pro";
+        const infoPlan = preciosPlanes[planId];
+
+        // Estructura de preferencia idéntica a la que te funciona en Python
+        const preferenceData = {
             body: {
                 items: [
                     {
-                        id: String(finalItemType),
-                        title: finalTitle,
+                        title: `LandingGen - ${infoPlan.nombre}`,
                         quantity: 1,
-                        unit_price: Number(finalPrice),
-                        currency_id: 'COP'
+                        currency_id: 'COP',
+                        unit_price: Number(infoPlan.precio)
                     }
                 ],
-                payer: {
-                    name: "Cliente",
-                    surname: "LandingGen",
-                    email: finalEmail
-                },
-                metadata: {
-                    user_email: finalEmail,
-                    item_type: finalItemType,
-                    plan_name: finalItemType
-                },
+                payer: { email: emailCliente },
                 back_urls: {
-                    success: `${baseUrl}/?status=success&item=${finalItemType}`,
-                    failure: `${baseUrl}/?status=failure`,
-                    pending: `${baseUrl}/?status=pending`
+                    success: 'https://landinggen.prestigecloser.com/?status=success',
+                    failure: 'https://landinggen.prestigecloser.com/?status=failure',
+                    pending: 'https://landinggen.prestigecloser.com/?status=pending'
                 },
                 auto_return: 'approved',
-                notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago'
+                notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
+                statement_descriptor: 'LANDINGGEN',
+                external_reference: `${emailCliente}|${planId}`
             }
-        });
+        };
 
-        // Validamos que la URL exista para evitar cualquier valor undefined
-        const checkoutUrl = result.init_point || result.sandbox_init_point;
-        if (!checkoutUrl) {
-            throw new Error('Mercado Pago no generó un punto de inicio válido.');
+        const preference = new Preference(mpClient);
+        const result = await preference.create(preferenceData);
+
+        // Extracción segura compatible con la respuesta de Mercado Pago
+        const initPoint = result.init_point || result.sandbox_init_point;
+        
+        if (!initPoint) {
+            console.error("Error MercadoPago Response:", result);
+            return res.status(400).json({ error: "Mercado Pago rechazó la preferencia." });
         }
 
-        console.log("Preferencia creada exitosamente. ID:", result.id, "Init Point:", checkoutUrl);
-        
-        // Enviamos ambas nomenclaturas por seguridad para que tu frontend la lea sin fallos
         res.json({ 
             success: true, 
-            init_point: checkoutUrl, 
-            initPoint: checkoutUrl, 
+            init_point: initPoint, 
+            initPoint: initPoint, 
             id: result.id 
         });
+
     } catch (error) {
-        console.error('ERROR CRÍTICO CREANDO PREFERENCIA DE MP:', error);
-        res.status(500).json({ 
-            error: error.message || 'No se pudo procesar el pago con Mercado Pago',
-            details: error.cause || error.toString()
-        });
+        console.error('Exception en crear_preferencia_pago:', error);
+        res.status(500).json({ error: error.message || 'Error interno procesando el pago' });
     }
 });
 
-// Webhook de Mercado Pago para procesar aprobaciones automáticas
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
-        const paymentInfo = req.body;
+        const body = req.body;
         
-        if (paymentInfo.type === 'payment' || paymentInfo.topic === 'payment' || paymentInfo.data?.id) {
-            const paymentId = paymentInfo.data ? paymentInfo.data.id : paymentInfo.id;
+        if (body.type === 'payment' || body.topic === 'payment') {
+            const paymentId = body.data?.id || body.id;
             
-            const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
-                headers: { 'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
-            });
-            
-            const paymentData = await response.json();
+            if (paymentId) {
+                // Consulta directa al API oficial de MP tal como lo haces en ActaPro
+                const response = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+                    headers: { 'Authorization': `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}` }
+                });
+                
+                const payment = await response.json();
 
-            if (paymentData && paymentData.status === 'approved') {
-                const userEmail = paymentData.metadata?.user_email || paymentData.payer?.email;
-                const itemType = paymentData.metadata?.item_type || paymentData.additional_info?.items?.[0]?.id || paymentData.description;
+                if (payment && payment.status === 'approved') {
+                    let payerEmail = payment.payer?.email;
+                    const extRef = payment.external_reference || "";
+                    let planDesdeRef = "pro";
 
-                if (userEmail) {
-                    const user = await User.findOne({ email: userEmail });
-                    if (user) {
-                        if (itemType.startsWith('platinum_template_')) {
-                            const templateKey = itemType.replace('platinum_template_', '');
-                            if (!user.unlockedPlatinumTemplates) {
-                                user.unlockedPlatinumTemplates = [];
-                            }
-                            if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
-                                user.unlockedPlatinumTemplates.push(templateKey);
-                            }
+                    if (extRef.includes("|")) {
+                        const parts = extRef.split("|");
+                        if (!payerEmail) payerEmail = parts[0];
+                        planDesdeRef = parts[1];
+                    } else if (!payerEmail) {
+                        payerEmail = extRef;
+                    }
+
+                    if (payerEmail) {
+                        payerEmail = payerEmail.trim().toLowerCase();
+                        
+                        const user = await User.findOne({ email: payerEmail });
+                        if (user) {
+                            user.plan = planDesdeRef;
+                            // Asignar tokens según el plan
+                            user.tokens = planDesdeRef === 'corporativo' ? 500000 : 150000;
                             await user.save();
-                            console.log(`Plantilla Platinum '${templateKey}' desbloqueada para ${userEmail}`);
-                        } else {
-                            user.plan = itemType;
-                            user.tokens = getTokensForPlan(itemType);
-                            await user.save();
-                            console.log(`Plan actualizado exitosamente para ${userEmail} a ${itemType}`);
+                            console.log(`Licencia de ${payerEmail} actualizada a ${planDesdeRef} exitosamente.`);
                         }
                     }
                 }
@@ -335,8 +333,8 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
         res.status(200).send('OK');
     } catch (error) {
-        console.error('Error en Webhook de MP:', error);
-        res.status(500).json({ error: 'Error procesando webhook' });
+        console.error('Error en webhook de Mercado Pago:', error);
+        res.status(500).json({ error: error.toString() });
     }
 });
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
