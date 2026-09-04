@@ -248,6 +248,8 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                     }
                 ],
                 payer: {
+                    name: "Cliente",
+                    surname: "LandingGen",
                     email: finalEmail
                 },
                 metadata: {
@@ -337,7 +339,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
         res.status(500).json({ error: 'Error procesando webhook' });
     }
 });
-
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
 app.post('/api/generate', verifyToken, async (req, res) => {
