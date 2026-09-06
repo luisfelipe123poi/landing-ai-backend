@@ -231,11 +231,8 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // Mapeo actualizado incluyendo planes regulares y plantillas exclusivas Platinum
+        // Mapeo actualizado con tus dos planes activos y soporte para las plantillas exclusivas
         const preciosPlanes = {
-            "basico": { nombre: "Plan Básico", precio: 10000, tokens: 50000 },
-            "profesional": { nombre: "Plan Profesional", precio: 25000, tokens: 150000 },
-            "corporativo": { nombre: "Plan Corporativo", precio: 50000, tokens: 500000 },
             "pro": { nombre: "Plan Pro Negocios", precio: 40000, tokens: 150000 },
             "agency_platinum": { nombre: "Plan Agencia Platinum", precio: 100000, tokens: 500000 }
         };
@@ -344,10 +341,8 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                 }
                             } else {
                                 user.plan = planDesdeRef;
-                                // Asignación de tokens dinámica según el plan adquirido
+                                // Asignación de tokens según el plan adquirido
                                 if (planDesdeRef === 'agency_platinum') {
-                                    user.tokens = 500000;
-                                } else if (planDesdeRef === 'corporativo') {
                                     user.tokens = 500000;
                                 } else {
                                     user.tokens = 150000;
@@ -367,7 +362,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
         res.status(500).json({ error: error.toString() });
     }
 });
-
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
 app.post('/api/generate', verifyToken, async (req, res) => {
