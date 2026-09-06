@@ -522,3 +522,36 @@ app.get('/s/:landingId', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
+
+app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
+    try {
+        // req.user es poblado por tu middleware verifyToken mediante el JWT
+        const userId = req.user.id || req.user._id;
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
+        }
+
+        // Validamos estrictamente contra la base de datos
+        const isPlatinum = user.plan === 'agency_platinum';
+
+        if (!isPlatinum) {
+            return res.status(403).json({ 
+                authorized: false, 
+                error: "Se requiere el Plan Agencia Platinum para acceder a esta sección." 
+            });
+        }
+
+        // Si pasa la validación, devolvemos éxito y los datos necesarios de permisos
+        return.json({ 
+            authorized: true, 
+            plan: user.plan,
+            unlockedTemplates: user.unlockedPlatinumTemplates || []
+        });
+
+    } catch (error) {
+        console.error("Error verificando acceso Platinum en backend:", error);
+        return.status(500).json({ authorized: false, error: "Error interno del servidor" });
+    }
+});
