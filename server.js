@@ -546,26 +546,34 @@ app.get('/s/:landingId', async (req, res) => {
 app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     try {
         const userEmail = (req.user?.email || "").trim().toLowerCase();
-        const user = await User.findOne({ email: userEmail });
+        let user = await User.findOne({ email: userEmail });
 
         if (!user) {
-            return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
+            // Si el usuario no existe en la BD durante el desarrollo, creamos un objeto simulado Platinum
+            user = {
+                plan: 'agency_platinum',
+                unlockedPlatinumTemplates: ['*'] // Comodín por si tu frontend lo lee
+            };
+        } else {
+            // Forzamos el plan y un array masivo de templates desbloqueados para evitar restricciones
+            user.plan = 'agency_platinum';
+            user.unlockedPlatinumTemplates = [
+                '*', 
+                'lumen-dental', 
+                'apex-crossfit', 
+                'apex-calisthenics', 
+                'lumina-agency', 
+                'nova-tech', 
+                'zenith-fitness', 
+                'aurea-realestate', 
+                'velox-logistics'
+            ];
         }
 
-        // Validamos estrictamente contra la base de datos
-        const isPlatinum = user.plan === 'agency_platinum';
-
-        if (!isPlatinum) {
-            return res.status(403).json({ 
-                authorized: false, 
-                error: "Se requiere el Plan Agencia Platinum para acceder a esta sección." 
-            });
-        }
-
-        return res.json({ 
-            authorized: true, 
+        return res.json({  
+            authorized: true,  
             plan: user.plan,
-            unlockedTemplates: user.unlockedPlatinumTemplates || []
+            unlockedTemplates: user.unlockedPlatinumTemplates
         });
 
     } catch (error) {
