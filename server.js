@@ -543,8 +543,7 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
             });
         }
 
-        // Si pasa la validación, devolvemos éxito y los datos necesarios de permisos
-        return.json({ 
+        return res.json({ 
             authorized: true, 
             plan: user.plan,
             unlockedTemplates: user.unlockedPlatinumTemplates || []
