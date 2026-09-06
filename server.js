@@ -217,8 +217,10 @@ app.post('/api/login', async (req, res) => {
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
 
+const axios = require('axios'); // Asegúrate de tener axios instalado en tu backend
+
 app.post('/api/create-preference', verifyToken, async (req, res) => {
-    console.log("--- RECIBIDA PETICIÓN /api/create-preference ---");
+    console.log("--- RECIBIDA PETICIÓN /api/create-preference (TRM Dinámica) ---");
     console.log("Body recibido:", req.body);
 
     try {
@@ -231,39 +233,55 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // Mapeo actualizado con tus dos planes activos y soporte para las plantillas exclusivas
-        const preciosPlanes = {
-            "pro": { nombre: "Plan Pro Negocios", precio: 40000, tokens: 150000 },
-            "agency_platinum": { nombre: "Plan Agencia Platinum", precio: 100000, tokens: 500000 }
+        // 1. Definimos los precios oficiales estrictos en USD
+        const preciosUSD = {
+            "pro": { nombre: "Plan Pro Negocios", precioUSD: 10, tokens: 150000 },
+            "agency_platinum": { nombre: "Plan Agencia Platinum", precioUSD: 25, tokens: 500000 }
         };
 
         let infoPlan;
         let planId = planRaw;
 
-        // Validamos si es una compra específica de una plantilla única Platinum
         if (planRaw.startsWith('platinum_template_')) {
+            const templateKey = planRaw.replace('platinum_template_', '');
             infoPlan = {
-                nombre: `Plantilla Exclusiva Platinum (${planRaw.replace('platinum_template_', '')})`,
-                precio: 300000, // Valor fijo de 300 mil para cualquier plantilla única
+                nombre: `Plantilla Exclusiva Platinum (${templateKey})`,
+                precioUSD: 30, // Precio fijo en USD para plantillas únicas
                 tokens: 500000
             };
-        } else if (preciosPlanes[planRaw]) {
-            infoPlan = preciosPlanes[planRaw];
+        } else if (preciosUSD[planRaw]) {
+            infoPlan = preciosUSD[planRaw];
         } else {
-            // Si no coincide con nada conocido, usa Pro por defecto
             planId = "pro";
-            infoPlan = preciosPlanes["pro"];
+            infoPlan = preciosUSD["pro"];
         }
 
-        // Estructura de preferencia enviando el precio y título dinámico correspondiente
+        // 2. Consultamos la tasa de cambio actual (USD a COP) en tiempo real
+        let tasaCambio = 4000; // Valor de respaldo por si falla la API externa
+        try {
+            // Usamos una API pública de tasas de cambio libre de token
+            const responseTasa = await axios.get('https://open.er-api.com/v6/latest/USD');
+            if (responseTasa.data && responseTasa.data.rates && responseTasa.data.rates.COP) {
+                tasaCambio = responseTasa.data.rates.COP;
+            }
+        } catch (errTasa) {
+            console.warn("No se pudo obtener la tasa en tiempo real, usando respaldo:", tasaCambio);
+        }
+
+        // 3. Calculamos el precio exacto en moneda local basado en la tasa actual
+        // Redondeamos para evitar decimales extraños en pasarelas de pago locales
+        const precioEnMonedaLocal = Math.round(infoPlan.precioUSD * tasaCambio);
+
+        console.log(`Conversión aplicada -> USD: $${infoPlan.precioUSD} | Tasa TRM: ${tasaCambio} | Total COP: $${precioEnMonedaLocal}`);
+
         const preferenceData = {
             body: {
                 items: [
                     {
-                        title: `LandingGen - ${infoPlan.nombre}`,
+                        title: `LandingGen - ${infoPlan.nombre} ($${infoPlan.precioUSD} USD)`,
                         quantity: 1,
-                        currency_id: 'COP',
-                        unit_price: Number(infoPlan.precio)
+                        currency_id: 'COP', // Exigido por tu cuenta local para procesar
+                        unit_price: Number(precioEnMonedaLocal)
                     }
                 ],
                 payer: { email: emailCliente },
@@ -300,7 +318,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         res.status(500).json({ error: error.message || 'Error interno procesando el pago' });
     }
 });
-
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
