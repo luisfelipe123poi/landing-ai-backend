@@ -228,18 +228,32 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // Mapeo actualizado con todos tus planes (Pro y Agencia Platinum)
+        // Mapeo actualizado incluyendo planes regulares y plantillas exclusivas Platinum
         const preciosPlanes = {
             "basico": { nombre: "Plan Básico", precio: 10000, tokens: 50000 },
             "profesional": { nombre: "Plan Profesional", precio: 25000, tokens: 150000 },
             "corporativo": { nombre: "Plan Corporativo", precio: 50000, tokens: 500000 },
-            "pro": { nombre: "Plan Pro Negocios", precio: 40000, tokens: 150000 }, // Ajusta el precio en COP si lo manejas en pesos (ej. $10 USD aprox) o usa tu lógica
-            "agency_platinum": { nombre: "Plan Agencia Platinum", precio: 100000, tokens: 500000 } // Ajusta el precio en COP (ej. $25 USD aprox)
+            "pro": { nombre: "Plan Pro Negocios", precio: 40000, tokens: 150000 },
+            "agency_platinum": { nombre: "Plan Agencia Platinum", precio: 100000, tokens: 500000 }
         };
 
-        // Si el plan recibido no existe en el diccionario, por defecto usa "pro"
-        const planId = preciosPlanes[planRaw] ? planRaw : "pro";
-        const infoPlan = preciosPlanes[planId];
+        let infoPlan;
+        let planId = planRaw;
+
+        // Validamos si es una compra específica de una plantilla única Platinum
+        if (planRaw.startsWith('platinum_template_')) {
+            infoPlan = {
+                nombre: `Plantilla Exclusiva Platinum (${planRaw.replace('platinum_template_', '')})`,
+                precio: 300000, // Valor fijo de 300 mil para cualquier plantilla única
+                tokens: 500000
+            };
+        } else if (preciosPlanes[planRaw]) {
+            infoPlan = preciosPlanes[planRaw];
+        } else {
+            // Si no coincide con nada conocido, usa Pro por defecto
+            planId = "pro";
+            infoPlan = preciosPlanes["pro"];
+        }
 
         // Estructura de preferencia enviando el precio y título dinámico correspondiente
         const preferenceData = {
@@ -278,7 +292,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         res.json({ 
             success: true, 
             init_point: initPoint, 
-            initPoint: initPoint, 
             id: result.id 
         });
 
@@ -287,7 +300,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         res.status(500).json({ error: error.message || 'Error interno procesando el pago' });
     }
 });
-
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
