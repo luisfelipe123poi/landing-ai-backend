@@ -164,7 +164,9 @@ app.post('/api/register', async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Faltan datos' });
 
-        const existingUser = await User.findOne({ email });
+        // Buscamos por email normalizado (en minúsculas y sin espacios) para evitar duplicados por mayúsculas
+        const cleanEmail = email.trim().toLowerCase();
+        const existingUser = await User.findOne({ email: cleanEmail });
         if (existingUser) {
             return res.status(400).json({ error: 'El usuario ya existe' });
         }
@@ -172,7 +174,7 @@ app.post('/api/register', async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         const plan = 'free';
         const newUser = new User({
-            email,
+            email: cleanEmail,
             passwordHash: hashedPassword,
             plan,
             tokens: getTokensForPlan(plan),
@@ -183,7 +185,7 @@ app.post('/api/register', async (req, res) => {
 
         await newUser.save();
 
-        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ email: cleanEmail }, JWT_SECRET, { expiresIn: '7d' });
         res.json({ success: true, token, plan, tokens: newUser.tokens });
     } catch (error) {
         res.status(500).json({ error: 'Error en el servidor' });
@@ -193,13 +195,14 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body;
-        const user = await User.findOne({ email });
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const user = await User.findOne({ email: cleanEmail });
 
         if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
 
-        const token = jwt.sign({ email }, JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ email: cleanEmail }, JWT_SECRET, { expiresIn: '7d' });
         res.json({ 
             success: true, 
             token, 
@@ -300,6 +303,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         res.status(500).json({ error: error.message || 'Error interno procesando el pago' });
     }
 });
+
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -332,17 +336,25 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         
                         const user = await User.findOne({ email: payerEmail });
                         if (user) {
-                            user.plan = planDesdeRef;
-                            // Asignación de tokens dinámica según el plan adquirido
-                            if (planDesdeRef === 'agency_platinum') {
-                                user.tokens = 500000;
-                            } else if (planDesdeRef === 'corporativo') {
-                                user.tokens = 500000;
+                            // Validar si la compra corresponde a una plantilla única Platinum
+                            if (planDesdeRef.startsWith('platinum_template_')) {
+                                const templateKey = planDesdeRef.replace('platinum_template_', '');
+                                if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
+                                    user.unlockedPlatinumTemplates.push(templateKey);
+                                }
                             } else {
-                                user.tokens = 150000;
+                                user.plan = planDesdeRef;
+                                // Asignación de tokens dinámica según el plan adquirido
+                                if (planDesdeRef === 'agency_platinum') {
+                                    user.tokens = 500000;
+                                } else if (planDesdeRef === 'corporativo') {
+                                    user.tokens = 500000;
+                                } else {
+                                    user.tokens = 150000;
+                                }
                             }
                             await user.save();
-                            console.log(`Licencia de ${payerEmail} actualizada a ${planDesdeRef} exitosamente.`);
+                            console.log(`Licencia de ${payerEmail} actualizada por pago exitoso (${planDesdeRef}).`);
                         }
                     }
                 }
@@ -355,6 +367,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
         res.status(500).json({ error: error.toString() });
     }
 });
+
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
 app.post('/api/generate', verifyToken, async (req, res) => {
@@ -519,15 +532,10 @@ app.get('/s/:landingId', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor corriendo en el puerto ${PORT}`);
-});
-
 app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     try {
-        // req.user es poblado por tu middleware verifyToken mediante el JWT
-        const userId = req.user.id || req.user._id;
-        const user = await User.findById(userId);
+        const userEmail = (req.user?.email || "").trim().toLowerCase();
+        const user = await User.findOne({ email: userEmail });
 
         if (!user) {
             return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
@@ -551,6 +559,10 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
 
     } catch (error) {
         console.error("Error verificando acceso Platinum en backend:", error);
-        return.status(500).json({ authorized: false, error: "Error interno del servidor" });
+        return res.status(500).json({ authorized: false, error: "Error interno del servidor" });
     }
+});
+
+app.listen(PORT, () => {
+    console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
