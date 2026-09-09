@@ -402,7 +402,7 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             .replace(/\{\{WHATSAPP\}\}/g, cleanWhatsapp);
 
         const landingId = Math.random().toString(36).substring(2, 9);
-        const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
+        const landingUrl = `https://${MAIN_DOMAIN}/${landingId}`;
         const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
 
         const newLanding = new Landing({
@@ -438,7 +438,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         }
 
         const landingId = Math.random().toString(36).substring(2, 9);
-        const landingUrl = `https://${MAIN_DOMAIN}/s/${landingId}`;
+        const landingUrl = `https://${MAIN_DOMAIN}/${landingId}`;
         const landingBusiness = business || 'Mi Negocio';
         const landingInfo = { landingId, business: landingBusiness, url: landingUrl, createdAt: new Date().toISOString() };
 
