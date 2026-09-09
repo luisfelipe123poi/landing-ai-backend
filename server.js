@@ -574,21 +574,33 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
-@app.get("/api/landings/{landing_id}")
-async def get_single_landing(landing_id: str, current_user: dict = Depends(verify_token)):
-    # Reemplaza esta consulta según cómo guardes tus landings (MongoDB, SQLite, JSON, etc.)
-    # Aquí asumimos que buscas en tu colección/tabla por el ID de la landing y que pertenece al usuario
-    landing = landings_collection.find_one({"id": landing_id, "user_id": current_user["id"]})
-    
-    if not landing:
-        # Si usas SQLite o un diccionario, ajústalo a tu estructura de datos
-        raise HTTPException(status_code=404, detail="Landing no encontrada")
-    
-    # Limpiamos el ObjectId de Mongo si lo hubiera para serializarlo bien a JSON
-    if "_id" in landing:
-        landing["_id"] = str(landing["_id"])
-        
-    return {"landing": landing}
+app.get('/api/landings/:landingId', verifyToken, async (req, res) => {
+    try {
+        const { landingId } = req.params;
+        const userEmail = req.user.email;
+
+        // Buscamos la landing que coincida con el ID y que pertenezca al usuario autenticado
+        const landing = await Landing.findOne({ landingId, userEmail });
+
+        if (!landing) {
+            return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
+        }
+
+        res.json({
+            success: true,
+            landing: {
+                id: landing.landingId,
+                landingId: landing.landingId,
+                business: landing.business,
+                htmlContent: landing.htmlContent,
+                createdAt: landing.createdAt
+            }
+        });
+    } catch (error) {
+        console.error('Error al obtener la landing individual:', error);
+        res.status(500).json({ error: 'Error interno del servidor al buscar la landing' });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
