@@ -574,6 +574,22 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
+@app.get("/api/landings/{landing_id}")
+async def get_single_landing(landing_id: str, current_user: dict = Depends(verify_token)):
+    # Reemplaza esta consulta según cómo guardes tus landings (MongoDB, SQLite, JSON, etc.)
+    # Aquí asumimos que buscas en tu colección/tabla por el ID de la landing y que pertenece al usuario
+    landing = landings_collection.find_one({"id": landing_id, "user_id": current_user["id"]})
+    
+    if not landing:
+        # Si usas SQLite o un diccionario, ajústalo a tu estructura de datos
+        raise HTTPException(status_code=404, detail="Landing no encontrada")
+    
+    # Limpiamos el ObjectId de Mongo si lo hubiera para serializarlo bien a JSON
+    if "_id" in landing:
+        landing["_id"] = str(landing["_id"])
+        
+    return {"landing": landing}
+
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
