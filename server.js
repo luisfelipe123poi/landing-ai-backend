@@ -574,31 +574,44 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
-app.get('/api/landings/:landingId', verifyToken, async (req, res) => {
+app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
+        const { business, htmlContent } = req.body;
         const userEmail = req.user.email;
 
-        // Buscamos la landing que coincida con el ID y que pertenezca al usuario autenticado
-        const landing = await Landing.findOne({ landingId, userEmail });
+        let user = await User.findOne({ email: userEmail });
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        if (!landing) {
+        // 1. Actualizamos el documento HTML en la colección principal Landing
+        const updatedLanding = await Landing.findOneAndUpdate(
+            { landingId, userEmail },
+            { 
+                business: business || 'Mi Negocio',
+                htmlContent 
+            },
+            { new: true }
+        );
+
+        if (!updatedLanding) {
             return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
         }
 
-        res.json({
-            success: true,
-            landing: {
-                id: landing.landingId,
-                landingId: landing.landingId,
-                business: landing.business,
-                htmlContent: landing.htmlContent,
-                createdAt: landing.createdAt
-            }
-        });
+        // 2. Actualizamos también el nombre del negocio dentro del array 'landings' del usuario si cambió
+        if (user.landings) {
+            user.landings = user.landings.map(l => {
+                if (l.landingId === landingId) {
+                    l.business = business || l.business;
+                }
+                return l;
+            });
+            await user.save();
+        }
+
+        res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
     } catch (error) {
-        console.error('Error al obtener la landing individual:', error);
-        res.status(500).json({ error: 'Error interno del servidor al buscar la landing' });
+        console.error('Error al actualizar la landing:', error);
+        res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
     }
 });
 
