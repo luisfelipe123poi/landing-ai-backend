@@ -512,9 +512,15 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
-app.get('/s/:landingId', async (req, res) => {
+app.get('/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
+        
+        // Evitamos que rutas reservadas del sistema interfieran
+        if (landingId === 'api' || landingId === 'favicon.ico') {
+            return res.status(404).send('No encontrado');
+        }
+
         const landingData = await Landing.findOne({ landingId });
 
         if (!landingData || !landingData.htmlContent) {
