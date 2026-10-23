@@ -42,6 +42,7 @@ const landingSchema = new mongoose.Schema({
     landingId: { type: String, required: true, unique: true },
     userEmail: { type: String, required: true },
     business: { type: String },
+    templateKey: { type: String }, // <--- Almacena la plantilla exacta
     htmlContent: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
 });
@@ -54,6 +55,7 @@ const userSchema = new mongoose.Schema({
     landings: [{
         landingId: String,
         business: String,
+        templateKey: String, // <--- Acceso rápido a la plantilla en el panel
         url: String,
         createdAt: String
     }],
@@ -164,7 +166,6 @@ app.post('/api/register', async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ error: 'Faltan datos' });
 
-        // Buscamos por email normalizado (en minúsculas y sin espacios) para evitar duplicados por mayúsculas
         const cleanEmail = email.trim().toLowerCase();
         const existingUser = await User.findOne({ email: cleanEmail });
         if (existingUser) {
@@ -216,8 +217,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // ================= ENDPOINTS DE MERCADO PAGO =================
-
-const axios = require('axios'); // Asegúrate de tener axios instalado en tu backend
+const axios = require('axios');
 
 app.post('/api/create-preference', verifyToken, async (req, res) => {
     console.log("--- RECIBIDA PETICIÓN /api/create-preference (TRM Dinámica) ---");
@@ -233,7 +233,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // 1. Definimos los precios oficiales estrictos en USD
         const preciosUSD = {
             "pro": { nombre: "Plan Pro Negocios", precioUSD: 10, tokens: 150000 },
             "agency_platinum": { nombre: "Plan Agencia Platinum", precioUSD: 25, tokens: 500000 }
@@ -246,7 +245,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             const templateKey = planRaw.replace('platinum_template_', '');
             infoPlan = {
                 nombre: `Plantilla Exclusiva Platinum (${templateKey})`,
-                precioUSD: 30, // Precio fijo en USD para plantillas únicas
+                precioUSD: 30,
                 tokens: 500000
             };
         } else if (preciosUSD[planRaw]) {
@@ -256,10 +255,8 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             infoPlan = preciosUSD["pro"];
         }
 
-        // 2. Consultamos la tasa de cambio actual (USD a COP) en tiempo real
-        let tasaCambio = 4000; // Valor de respaldo por si falla la API externa
+        let tasaCambio = 4000;
         try {
-            // Usamos una API pública de tasas de cambio libre de token
             const responseTasa = await axios.get('https://open.er-api.com/v6/latest/USD');
             if (responseTasa.data && responseTasa.data.rates && responseTasa.data.rates.COP) {
                 tasaCambio = responseTasa.data.rates.COP;
@@ -268,8 +265,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             console.warn("No se pudo obtener la tasa en tiempo real, usando respaldo:", tasaCambio);
         }
 
-        // 3. Calculamos el precio exacto en moneda local basado en la tasa actual
-        // Redondeamos para evitar decimales extraños en pasarelas de pago locales
         const precioEnMonedaLocal = Math.round(infoPlan.precioUSD * tasaCambio);
 
         console.log(`Conversión aplicada -> USD: $${infoPlan.precioUSD} | Tasa TRM: ${tasaCambio} | Total COP: $${precioEnMonedaLocal}`);
@@ -280,7 +275,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                     {
                         title: `LandingGen - ${infoPlan.nombre} ($${infoPlan.precioUSD} USD)`,
                         quantity: 1,
-                        currency_id: 'COP', // Exigido por tu cuenta local para procesar
+                        currency_id: 'COP',
                         unit_price: Number(precioEnMonedaLocal)
                     }
                 ],
@@ -318,6 +313,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         res.status(500).json({ error: error.message || 'Error interno procesando el pago' });
     }
 });
+
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -350,7 +346,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         
                         const user = await User.findOne({ email: payerEmail });
                         if (user) {
-                            // Validar si la compra corresponde a una plantilla única Platinum
                             if (planDesdeRef.startsWith('platinum_template_')) {
                                 const templateKey = planDesdeRef.replace('platinum_template_', '');
                                 if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
@@ -358,7 +353,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                 }
                             } else {
                                 user.plan = planDesdeRef;
-                                // Asignación de tokens según el plan adquirido
                                 if (planDesdeRef === 'agency_platinum') {
                                     user.tokens = 500000;
                                 } else {
@@ -379,6 +373,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
         res.status(500).json({ error: error.toString() });
     }
 });
+
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
 app.post('/api/generate', verifyToken, async (req, res) => {
@@ -392,7 +387,6 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             return res.status(403).json({ error: 'No tienes tokens disponibles. Actualiza tu plan.' });
         }
 
-        // Definimos la plantilla o usamos 'cafe' por defecto
         const activeTemplateKey = templateName || 'cafe';
         let templateHtml = STATIC_TEMPLATES[activeTemplateKey] || STATIC_TEMPLATES['cafe'];
         const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
@@ -406,7 +400,6 @@ app.post('/api/generate', verifyToken, async (req, res) => {
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
         
-        // Incluimos templateKey en la información que se guarda dentro del usuario
         const landingInfo = { 
             landingId, 
             business, 
@@ -415,7 +408,6 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             createdAt: new Date().toISOString() 
         };
 
-        // Guardamos el documento con el templateKey correspondiente
         const newLanding = new Landing({
             landingId,
             userEmail: req.user.email,
@@ -441,7 +433,7 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
 app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
-        const { business, htmlContent } = req.body;
+        const { business, htmlContent, templateKey } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -450,15 +442,24 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
         }
 
+        const activeTemplateKey = templateKey || 'cafe';
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
         const landingBusiness = business || 'Mi Negocio';
-        const landingInfo = { landingId, business: landingBusiness, url: landingUrl, createdAt: new Date().toISOString() };
+        
+        const landingInfo = { 
+            landingId, 
+            business: landingBusiness, 
+            templateKey: activeTemplateKey, 
+            url: landingUrl, 
+            createdAt: new Date().toISOString() 
+        };
 
         const newLanding = new Landing({
             landingId,
             userEmail: req.user.email,
             business: landingBusiness,
+            templateKey: activeTemplateKey,
             htmlContent
         });
         await newLanding.save();
@@ -472,20 +473,10 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
+        console.error('Error al guardar la página:', error);
         res.status(500).json({ error: 'Error al guardar la página' });
     }
 });
-
-const handleGetLandings = async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-        res.json({ success: true, landings: user.landings || [], unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || [] });
-    } catch (error) {
-        res.status(500).json({ error: 'Error al obtener las landings' });
-    }
-};
 
 const handleGetLandings = async (req, res) => {
     try {
@@ -497,7 +488,7 @@ const handleGetLandings = async (req, res) => {
         const mappedLandings = (user.landings || []).map(l => {
             const dbLanding = fullLandings.find(fl => fl.landingId === l.landingId);
             return {
-                ...l.toObject ? l.toObject() : l,
+                ...(l.toObject ? l.toObject() : l),
                 templateKey: l.templateKey || dbLanding?.templateKey || 'cafe'
             };
         });
@@ -616,13 +607,12 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
 app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
-        const { business, htmlContent, templateKey } = req.body; // <--- Capturamos templateKey
+        const { business, htmlContent, templateKey } = req.body;
         const userEmail = req.user.email;
 
         let user = await User.findOne({ email: userEmail });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // 1. Actualizamos el documento HTML y el templateKey en la colección principal Landing
         const updateData = { 
             business: business || 'Mi Negocio',
             htmlContent 
@@ -639,7 +629,6 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
             return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
         }
 
-        // 2. Actualizamos también los datos dentro del array 'landings' del usuario
         if (user.landings) {
             user.landings = user.landings.map(l => {
                 if (l.landingId === landingId) {
