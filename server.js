@@ -392,7 +392,9 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             return res.status(403).json({ error: 'No tienes tokens disponibles. Actualiza tu plan.' });
         }
 
-        let templateHtml = STATIC_TEMPLATES[templateName] || STATIC_TEMPLATES['cafe'];
+        // Definimos la plantilla o usamos 'cafe' por defecto
+        const activeTemplateKey = templateName || 'cafe';
+        let templateHtml = STATIC_TEMPLATES[activeTemplateKey] || STATIC_TEMPLATES['cafe'];
         const cleanWhatsapp = whatsapp ? whatsapp.replace(/[^0-9]/g, '') : '';
 
         let htmlContent = templateHtml
@@ -403,12 +405,22 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
-        const landingInfo = { landingId, business, url: landingUrl, createdAt: new Date().toISOString() };
+        
+        // Incluimos templateKey en la información que se guarda dentro del usuario
+        const landingInfo = { 
+            landingId, 
+            business, 
+            templateKey: activeTemplateKey, 
+            url: landingUrl, 
+            createdAt: new Date().toISOString() 
+        };
 
+        // Guardamos el documento con el templateKey correspondiente
         const newLanding = new Landing({
             landingId,
             userEmail: req.user.email,
             business,
+            templateKey: activeTemplateKey,
             htmlContent
         });
         await newLanding.save();
@@ -422,6 +434,7 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
     } catch (error) {
+        console.error('Error al generar la landing:', error);
         res.status(500).json({ error: 'Error al generar la landing' });
     }
 });
