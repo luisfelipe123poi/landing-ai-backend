@@ -613,15 +613,20 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
         let user = await User.findOne({ email: userEmail });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        const updateData = { 
-            business: business || 'Mi Negocio',
-            htmlContent 
-        };
-        if (templateKey) updateData.templateKey = templateKey;
+        // Buscamos si la landing ya existe para rescatar valores previos si es necesario
+        const existingLanding = await Landing.findOne({ landingId, userEmail });
+        
+        // Determinamos el templateKey definitivo (nuevo, el que ya tenía, o 'cafe' por defecto)
+        const finalTemplateKey = templateKey || existingLanding?.templateKey || 'cafe';
 
+        // 1. Actualizamos el documento en la colección principal Landing
         const updatedLanding = await Landing.findOneAndUpdate(
             { landingId, userEmail },
-            updateData,
+            { 
+                business: business || 'Mi Negocio',
+                htmlContent,
+                templateKey: finalTemplateKey
+            },
             { new: true }
         );
 
@@ -629,11 +634,12 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
             return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
         }
 
+        // 2. Actualizamos también el array 'landings' dentro del documento del usuario
         if (user.landings) {
             user.landings = user.landings.map(l => {
                 if (l.landingId === landingId) {
                     l.business = business || l.business;
-                    if (templateKey) l.templateKey = templateKey;
+                    l.templateKey = finalTemplateKey;
                 }
                 return l;
             });
@@ -642,8 +648,8 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
 
         res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
     } catch (error) {
-        console.error('Error al actualizar la landing:', error);
-        res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
+        console.error('Error detallado al actualizar la landing:', error);
+        res.status(500).json({ error: 'Error interno del servidor al actualizar la página: ' + error.message });
     }
 });
 
