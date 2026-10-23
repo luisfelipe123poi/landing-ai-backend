@@ -487,6 +487,28 @@ const handleGetLandings = async (req, res) => {
     }
 };
 
+const handleGetLandings = async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        const fullLandings = await Landing.find({ userEmail: req.user.email });
+        
+        const mappedLandings = (user.landings || []).map(l => {
+            const dbLanding = fullLandings.find(fl => fl.landingId === l.landingId);
+            return {
+                ...l.toObject ? l.toObject() : l,
+                templateKey: l.templateKey || dbLanding?.templateKey || 'cafe'
+            };
+        });
+
+        res.json({ success: true, landings: mappedLandings, unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || [] });
+    } catch (error) {
+        console.error('Error al obtener las landings:', error);
+        res.status(500).json({ error: 'Error al obtener las landings' });
+    }
+};
+
 app.get('/api/landings', verifyToken, handleGetLandings);
 app.get('/api/my-landings', verifyToken, handleGetLandings);
 
@@ -529,7 +551,6 @@ app.get('/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
         
-        // Evitamos que rutas reservadas del sistema interfieran
         if (landingId === 'api' || landingId === 'favicon.ico') {
             return res.status(404).send('No encontrado');
         }
@@ -571,7 +592,6 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
             return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
         }
 
-        // Validamos estrictamente contra la base de datos
         const isPlatinum = user.plan === 'agency_platinum';
 
         if (!isPlatinum) {
@@ -596,19 +616,22 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
 app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
-        const { business, htmlContent } = req.body;
+        const { business, htmlContent, templateKey } = req.body; // <--- Capturamos templateKey
         const userEmail = req.user.email;
 
         let user = await User.findOne({ email: userEmail });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // 1. Actualizamos el documento HTML en la colección principal Landing
+        // 1. Actualizamos el documento HTML y el templateKey en la colección principal Landing
+        const updateData = { 
+            business: business || 'Mi Negocio',
+            htmlContent 
+        };
+        if (templateKey) updateData.templateKey = templateKey;
+
         const updatedLanding = await Landing.findOneAndUpdate(
             { landingId, userEmail },
-            { 
-                business: business || 'Mi Negocio',
-                htmlContent 
-            },
+            updateData,
             { new: true }
         );
 
@@ -616,11 +639,12 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
             return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
         }
 
-        // 2. Actualizamos también el nombre del negocio dentro del array 'landings' del usuario si cambió
+        // 2. Actualizamos también los datos dentro del array 'landings' del usuario
         if (user.landings) {
             user.landings = user.landings.map(l => {
                 if (l.landingId === landingId) {
                     l.business = business || l.business;
+                    if (templateKey) l.templateKey = templateKey;
                 }
                 return l;
             });
