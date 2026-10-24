@@ -233,20 +233,42 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
+        // Estructura oficial de precios y límites de páginas (tokens) exactos
         const preciosUSD = {
-            "pro": { nombre: "Plan Pro Negocios", precioUSD: 10, tokens: 150000 },
-            "agency_platinum": { nombre: "Plan Agencia Platinum", precioUSD: 25, tokens: 500000 }
+            "pro": { nombre: "Plan Pro Negocios", precioUSD: 10, tokens: 5 },
+            "agency_platinum": { nombre: "Plan Agencia Platinum", precioUSD: 25, tokens: 10 }
         };
 
         let infoPlan;
         let planId = planRaw;
 
+        // Validar si es una compra de Plantilla Exclusiva Platinum
         if (planRaw.startsWith('platinum_template_')) {
             const templateKey = planRaw.replace('platinum_template_', '');
+            
+            // 1. VALIDACIÓN DE EXCLUSIVIDAD GLOBAL PREVIA (Backend Checkout)
+            // Verificamos si CUALQUIER OTRO usuario ya tiene esta plantilla desbloqueada
+            const alreadyTaken = await User.findOne({
+                email: { $ne: emailCliente },
+                unlockedPlatinumTemplates: templateKey
+            });
+
+            if (alreadyTaken) {
+                return res.status(400).json({ 
+                    error: 'Lo sentimos, esta plantilla exclusiva ya fue alquilada por otro usuario y ya no está disponible.' 
+                });
+            }
+
+            // Verificar si el usuario actual ya la posee
+            const currentUser = await User.findOne({ email: emailCliente });
+            if (currentUser && currentUser.unlockedPlatinumTemplates.includes(templateKey)) {
+                return res.status(400).json({ error: 'Ya tienes desbloqueada esta plantilla exclusiva.' });
+            }
+
             infoPlan = {
                 nombre: `Plantilla Exclusiva Platinum (${templateKey})`,
                 precioUSD: 30,
-                tokens: 500000
+                tokens: 0 // Las plantillas no restan páginas de límite mensual, solo se suman al array
             };
         } else if (preciosUSD[planRaw]) {
             infoPlan = preciosUSD[planRaw];
@@ -314,6 +336,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
     }
 });
 
+// Webhook de Mercado Pago
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -348,19 +371,30 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         if (user) {
                             if (planDesdeRef.startsWith('platinum_template_')) {
                                 const templateKey = planDesdeRef.replace('platinum_template_', '');
-                                if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
-                                    user.unlockedPlatinumTemplates.push(templateKey);
+                                
+                                // VALIDACIÓN DE EXCLUSIVIDAD GLOBAL EN MONGODB:
+                                // Verifica si cualquier otro usuario ya registró esta plantilla exclusiva
+                                const alreadyClaimed = await User.findOne({
+                                    _id: { $ne: user._id },
+                                    unlockedPlatinumTemplates: templateKey
+                                });
+
+                                if (alreadyClaimed) {
+                                    console.warn(`[EXCLUSIVIDAD VIOLADA] La plantilla ${templateKey} ya fue alquilada previamente por otro usuario (${alreadyClaimed.email}). No se asignó a ${payerEmail}.`);
+                                } else {
+                                    if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
+                                        user.unlockedPlatinumTemplates.push(templateKey);
+                                        await user.save();
+                                        console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada exitosamente a ${payerEmail}.`);
+                                    }
                                 }
                             } else {
+                                // Asignación unificada de plan y tokens (límites exactos de páginas)
                                 user.plan = planDesdeRef;
-                                if (planDesdeRef === 'agency_platinum') {
-                                    user.tokens = 500000;
-                                } else {
-                                    user.tokens = 150000;
-                                }
+                                user.tokens = getTokensForPlan(planDesdeRef);
+                                await user.save();
+                                console.log(`Licencia de ${payerEmail} actualizada por pago exitoso. Plan: ${planDesdeRef}, Páginas asignadas: ${user.tokens}.`);
                             }
-                            await user.save();
-                            console.log(`Licencia de ${payerEmail} actualizada por pago exitoso (${planDesdeRef}).`);
                         }
                     }
                 }
