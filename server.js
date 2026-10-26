@@ -467,27 +467,25 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
 app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
-        const { business, htmlContent, templateKey } = req.body;
+        const { business, htmlContent, templateKey, whatsapp } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         const activeTemplateKey = templateKey || 'cafe';
 
-        // Detectar si es plantilla Platinum por prefijo o convención
+        // Detectar si es plantilla Platinum
         const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
-                                   activeTemplateKey.includes('platinum') ||
-                                   STATIC_TEMPLATES_ARE_PLATINUM(activeTemplateKey); // O tu lista de exclusivas
+                                   activeTemplateKey.includes('platinum');
 
         if (isPlatinumTemplate) {
-            // Verificar estrictamente si el usuario ya pagó y desbloqueó esta plantilla
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
                 return res.status(403).json({ 
                     error: 'ACCESO_RESTRINGIDO_PAGO',
-                    message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler exclusivo antes de poder editarla y guardarla.' 
+                    message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler antes de editarla.' 
                 });
             }
         } else {
@@ -497,7 +495,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             }
         }
 
-        // ... resto de tu lógica para guardar la landing ...
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
         
@@ -506,22 +503,36 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             userEmail: req.user.email,
             business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
-            htmlContent
+            htmlContent: htmlContent || ''
         });
         await newLanding.save();
 
-        if (!isPlatinumTemplate && user.tokens > 0 && user.tokens < 999999) {
+        // Descontar token solo si no es platinum y el usuario tiene tokens finitos
+        if (!isPlatinumTemplate && user.tokens !== undefined && user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
 
         if (!user.landings) user.landings = [];
-        user.landings.push({ landingId, business, templateKey: activeTemplateKey, url: landingUrl, createdAt: new Date().toISOString() });
+        user.landings.push({ 
+            landingId, 
+            business: business || 'Mi Negocio', 
+            templateKey: activeTemplateKey, 
+            url: landingUrl, 
+            createdAt: new Date().toISOString() 
+        });
+        
         await user.save();
 
-        res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
+        res.json({ 
+            success: true, 
+            landingId, 
+            url: landingUrl, 
+            remainingTokens: user.tokens 
+        });
+
     } catch (error) {
-        console.error('Error al guardar la página:', error);
-        res.status(500).json({ error: 'Error al guardar la página' });
+        console.error('CRITICAL ERROR en /api/save-custom-landing:', error);
+        res.status(500).json({ error: 'Error interno en el servidor al guardar la página: ' + error.message });
     }
 });
 
