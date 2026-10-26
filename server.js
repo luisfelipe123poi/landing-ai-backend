@@ -474,32 +474,63 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
         const activeTemplateKey = templateKey || 'cafe-macondo';
 
-        // ==========================================================
-        // VALIDACIÓN DINÁMICA UNIVERSAL PARA PLATINUM / EXCLUSIVAS
-        // ==========================================================
-        // Detecta automáticamente si la plantilla es de pago por su prefijo
-        // o si en tu base de datos global/memoria está marcada como exclusiva.
+        // Detectar si es una plantilla Platinum o Exclusiva
         const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
-                                   activeTemplateKey.includes('platinum'); 
-        // Nota: Si tus plantillas exclusivas usan nombres propios (ej. 'vetcare', 'lumen-dental'), 
-        // puedes asegurarte de marcarlas añadiéndoles el prefijo "platinum_" en tu catálogo o frontend.
+                                   activeTemplateKey.includes('platinum') ||
+                                   // O si pertenece al registro de exclusivas premium:
+                                   ['lumen-dental', 'nova-gym', 'apex-crossfit', 'estudio-aura', 'instituto-aethela'].includes(activeTemplateKey);
         
         if (isPlatinumTemplate) {
-            // Verificamos si el usuario ya realizó el pago único de alquiler para esta plantilla
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
-                return res.status(403).json({ 
-                    error: 'Esta es una Plantilla Exclusiva Platinum. Debes realizar el pago de alquiler único antes de poder crear o guardar páginas con ella.' 
+                // Validación estricta de exclusividad global en DB
+                const alreadyClaimed = await User.findOne({
+                    _id: { $ne: user._id },
+                    unlockedPlatinumTemplates: activeTemplateKey
+                });
+
+                if (alreadyClaimed) {
+                    return res.status(400).json({ 
+                        error: 'Esta plantilla exclusiva ya fue alquilada por otro usuario y ya no está disponible.' 
+                    });
+                }
+
+                // Generamos de forma automática la preferencia de pago de Mercado Pago por $300,000 COP (o el valor de renta mensual)
+                const preferenceData = {
+                    body: {
+                        items: [{
+                            title: `Alquiler Exclusivo Plantilla: ${activeTemplateKey}`,
+                            quantity: 1,
+                            currency_id: 'COP',
+                            unit_price: 300000 
+                        }],
+                        payer: { email: user.email },
+                        back_urls: {
+                            success: `https://landinggen.prestigecloser.com/?status=success&unlocked=${activeTemplateKey}`,
+                            failure: 'https://landinggen.prestigecloser.com/?status=failure',
+                            pending: 'https://landinggen.prestigecloser.com/?status=pending'
+                        },
+                        auto_return: 'approved',
+                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
+                        external_reference: `${user.email}|platinum_template_${activeTemplateKey}`
+                    }
+                };
+
+                const preference = new Preference(mpClient);
+                const result = await preference.create(preferenceData);
+                const initPoint = result.init_point || result.sandbox_init_point;
+
+                return res.status(403).json({
+                    requiresPayment: true,
+                    init_point: initPoint,
+                    error: 'Las plantillas Platinum requieren una suscripción mes a mes aparte para garantizar exclusividad total.'
                 });
             }
         } else {
-            // ==========================================================
-            // VALIDACIÓN DE TOKENS (LÍMITE DE PÁGINAS) PARA PLANES NORMALES
-            // ==========================================================
             if (user.tokens !== undefined && user.tokens <= 0) {
-                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
+                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan.' });
             }
         }
 
@@ -524,11 +555,8 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         });
         await newLanding.save();
 
-        // No descontamos tokens si es una plantilla platinum
-        if (!isPlatinumTemplate) {
-            if (user.tokens > 0 && user.tokens < 999999) {
-                user.tokens -= 1;
-            }
+        if (!isPlatinumTemplate && user.tokens > 0 && user.tokens < 999999) {
+            user.tokens -= 1;
         }
 
         if (!user.landings) user.landings = [];
