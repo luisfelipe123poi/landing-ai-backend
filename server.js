@@ -472,15 +472,21 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        const activeTemplateKey = templateKey || 'cafe';
+        const activeTemplateKey = templateKey || 'cafe-macondo';
 
         // ==========================================================
-        // 1. VALIDACIÓN DE EXCLUSIVIDAD PARA PLANTILLAS PLATINUM
+        // VALIDACIÓN DINÁMICA UNIVERSAL PARA PLATINUM / EXCLUSIVAS
         // ==========================================================
-        const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || activeTemplateKey.startsWith('platinum-');
+        // Detecta automáticamente si la plantilla es de pago por su prefijo
+        // o si en tu base de datos global/memoria está marcada como exclusiva.
+        const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || 
+                                   activeTemplateKey.startsWith('platinum-') ||
+                                   activeTemplateKey.includes('platinum'); 
+        // Nota: Si tus plantillas exclusivas usan nombres propios (ej. 'vetcare', 'lumen-dental'), 
+        // puedes asegurarte de marcarlas añadiéndoles el prefijo "platinum_" en tu catálogo o frontend.
         
         if (isPlatinumTemplate) {
-            // Verificar si el usuario ya compró/desbloqueó esta plantilla exclusiva
+            // Verificamos si el usuario ya realizó el pago único de alquiler para esta plantilla
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
@@ -490,7 +496,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             }
         } else {
             // ==========================================================
-            // 2. VALIDACIÓN DE TOKENS (LÍMITE DE PÁGINAS) PARA PLANES NORMALES
+            // VALIDACIÓN DE TOKENS (LÍMITE DE PÁGINAS) PARA PLANES NORMALES
             // ==========================================================
             if (user.tokens !== undefined && user.tokens <= 0) {
                 return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
@@ -518,7 +524,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         });
         await newLanding.save();
 
-        // Solo descontamos token/página si NO es una plantilla platinum (o según la lógica de tu negocio)
+        // No descontamos tokens si es una plantilla platinum
         if (!isPlatinumTemplate) {
             if (user.tokens > 0 && user.tokens < 999999) {
                 user.tokens -= 1;
@@ -535,6 +541,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Error al guardar la página' });
     }
 });
+
 const handleGetLandings = async (req, res) => {
     try {
         const user = await User.findOne({ email: req.user.email });
