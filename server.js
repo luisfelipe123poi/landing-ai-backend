@@ -472,84 +472,39 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        const activeTemplateKey = templateKey || 'cafe-macondo';
+        const activeTemplateKey = templateKey || 'cafe';
 
-        // Detectar si es una plantilla Platinum o Exclusiva
+        // Detectar si es plantilla Platinum por prefijo o convención
         const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
                                    activeTemplateKey.includes('platinum') ||
-                                   // O si pertenece al registro de exclusivas premium:
-                                   ['lumen-dental', 'nova-gym', 'apex-crossfit', 'estudio-aura', 'instituto-aethela'].includes(activeTemplateKey);
-        
+                                   STATIC_TEMPLATES_ARE_PLATINUM(activeTemplateKey); // O tu lista de exclusivas
+
         if (isPlatinumTemplate) {
+            // Verificar estrictamente si el usuario ya pagó y desbloqueó esta plantilla
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
-                // Validación estricta de exclusividad global en DB
-                const alreadyClaimed = await User.findOne({
-                    _id: { $ne: user._id },
-                    unlockedPlatinumTemplates: activeTemplateKey
-                });
-
-                if (alreadyClaimed) {
-                    return res.status(400).json({ 
-                        error: 'Esta plantilla exclusiva ya fue alquilada por otro usuario y ya no está disponible.' 
-                    });
-                }
-
-                // Generamos de forma automática la preferencia de pago de Mercado Pago por $300,000 COP (o el valor de renta mensual)
-                const preferenceData = {
-                    body: {
-                        items: [{
-                            title: `Alquiler Exclusivo Plantilla: ${activeTemplateKey}`,
-                            quantity: 1,
-                            currency_id: 'COP',
-                            unit_price: 300000 
-                        }],
-                        payer: { email: user.email },
-                        back_urls: {
-                            success: `https://landinggen.prestigecloser.com/?status=success&unlocked=${activeTemplateKey}`,
-                            failure: 'https://landinggen.prestigecloser.com/?status=failure',
-                            pending: 'https://landinggen.prestigecloser.com/?status=pending'
-                        },
-                        auto_return: 'approved',
-                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
-                        external_reference: `${user.email}|platinum_template_${activeTemplateKey}`
-                    }
-                };
-
-                const preference = new Preference(mpClient);
-                const result = await preference.create(preferenceData);
-                const initPoint = result.init_point || result.sandbox_init_point;
-
-                return res.status(403).json({
-                    requiresPayment: true,
-                    init_point: initPoint,
-                    error: 'Las plantillas Platinum requieren una suscripción mes a mes aparte para garantizar exclusividad total.'
+                return res.status(403).json({ 
+                    error: 'ACCESO_RESTRINGIDO_PAGO',
+                    message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler exclusivo antes de poder editarla y guardarla.' 
                 });
             }
         } else {
+            // Validación de tokens para planes normales
             if (user.tokens !== undefined && user.tokens <= 0) {
-                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan.' });
+                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía.' });
             }
         }
 
+        // ... resto de tu lógica para guardar la landing ...
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
-        const landingBusiness = business || 'Mi Negocio';
         
-        const landingInfo = { 
-            landingId, 
-            business: landingBusiness, 
-            templateKey: activeTemplateKey, 
-            url: landingUrl, 
-            createdAt: new Date().toISOString() 
-        };
-
         const newLanding = new Landing({
             landingId,
             userEmail: req.user.email,
-            business: landingBusiness,
+            business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
             htmlContent
         });
@@ -560,7 +515,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         }
 
         if (!user.landings) user.landings = [];
-        user.landings.push(landingInfo);
+        user.landings.push({ landingId, business, templateKey: activeTemplateKey, url: landingUrl, createdAt: new Date().toISOString() });
         await user.save();
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
