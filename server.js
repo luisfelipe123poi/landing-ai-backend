@@ -696,6 +696,7 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
+// 2. ENDPOINT DE ACTUALIZACIÓN (PUT) POR SI EL EDITOR USA ESTA RUTA AL GUARDAR
 app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
@@ -705,20 +706,48 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
         let user = await User.findOne({ email: userEmail });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        // Buscamos si la landing ya existe para rescatar valores previos si es necesario
         const existingLanding = await Landing.findOne({ landingId, userEmail });
-        
-        // Determinamos el templateKey definitivo (nuevo, el que ya tenía, o 'cafe' por defecto)
         const finalTemplateKey = templateKey || existingLanding?.templateKey || 'cafe';
 
-        // 1. Actualizamos el documento en la colección principal Landing
+        if (esPlantillaPlatinum(finalTemplateKey)) {
+            const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(finalTemplateKey);
+            
+            if (!hasUnlocked) {
+                const preferenceData = {
+                    body: {
+                        items: [{
+                            title: `Suscripción Mensual Plantilla Exclusiva: ${finalTemplateKey}`,
+                            quantity: 1,
+                            currency_id: 'COP',
+                            unit_price: 300000 
+                        }],
+                        payer: { email: user.email },
+                        back_urls: {
+                            success: `https://landinggen.prestigecloser.com/?status=success&unlocked=${finalTemplateKey}`,
+                            failure: 'https://landinggen.prestigecloser.com/?status=failure',
+                            pending: 'https://landinggen.prestigecloser.com/?status=pending'
+                        },
+                        auto_return: 'approved',
+                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
+                        external_reference: `${user.email}|platinum_template_${finalTemplateKey}`
+                    }
+                };
+
+                const preference = new Preference(mpClient);
+                const result = await preference.create(preferenceData);
+                const initPoint = result.init_point || result.sandbox_init_point;
+
+                return res.status(403).json({
+                    requiresPayment: true,
+                    init_point: initPoint,
+                    error: 'Las plantillas Platinum requieren una suscripción mes a mes aparte para su publicación.'
+                });
+            }
+        }
+
         const updatedLanding = await Landing.findOneAndUpdate(
             { landingId, userEmail },
-            { 
-                business: business || 'Mi Negocio',
-                htmlContent,
-                templateKey: finalTemplateKey
-            },
+            { business: business || 'Mi Negocio', htmlContent, templateKey: finalTemplateKey },
             { new: true }
         );
 
@@ -726,22 +755,9 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
             return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
         }
 
-        // 2. Actualizamos también el array 'landings' dentro del documento del usuario
-        if (user.landings) {
-            user.landings = user.landings.map(l => {
-                if (l.landingId === landingId) {
-                    l.business = business || l.business;
-                    l.templateKey = finalTemplateKey;
-                }
-                return l;
-            });
-            await user.save();
-        }
-
         res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
     } catch (error) {
-        console.error('Error detallado al actualizar la landing:', error);
-        res.status(500).json({ error: 'Error interno del servidor al actualizar la página: ' + error.message });
+        res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
     }
 });
 
