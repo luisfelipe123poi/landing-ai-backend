@@ -472,11 +472,31 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        if (user.tokens !== undefined && user.tokens <= 0) {
-            return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
+        const activeTemplateKey = templateKey || 'cafe';
+
+        // ==========================================================
+        // 1. VALIDACIÓN DE EXCLUSIVIDAD PARA PLANTILLAS PLATINUM
+        // ==========================================================
+        const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || activeTemplateKey.startsWith('platinum-');
+        
+        if (isPlatinumTemplate) {
+            // Verificar si el usuario ya compró/desbloqueó esta plantilla exclusiva
+            const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
+            
+            if (!hasUnlocked) {
+                return res.status(403).json({ 
+                    error: 'Esta es una Plantilla Exclusiva Platinum. Debes realizar el pago de alquiler único antes de poder crear o guardar páginas con ella.' 
+                });
+            }
+        } else {
+            // ==========================================================
+            // 2. VALIDACIÓN DE TOKENS (LÍMITE DE PÁGINAS) PARA PLANES NORMALES
+            // ==========================================================
+            if (user.tokens !== undefined && user.tokens <= 0) {
+                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía para crear o guardar más páginas.' });
+            }
         }
 
-        const activeTemplateKey = templateKey || 'cafe';
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
         const landingBusiness = business || 'Mi Negocio';
@@ -498,9 +518,13 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         });
         await newLanding.save();
 
-        if (user.tokens > 0 && user.tokens < 999999) {
-            user.tokens -= 1;
+        // Solo descontamos token/página si NO es una plantilla platinum (o según la lógica de tu negocio)
+        if (!isPlatinumTemplate) {
+            if (user.tokens > 0 && user.tokens < 999999) {
+                user.tokens -= 1;
+            }
         }
+
         if (!user.landings) user.landings = [];
         user.landings.push(landingInfo);
         await user.save();
@@ -511,7 +535,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Error al guardar la página' });
     }
 });
-
 const handleGetLandings = async (req, res) => {
     try {
         const user = await User.findOne({ email: req.user.email });
