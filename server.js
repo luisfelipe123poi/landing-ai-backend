@@ -68,6 +68,43 @@ const userSchema = new mongoose.Schema({
 const Landing = mongoose.model('Landing', landingSchema);
 const User = mongoose.model('User', userSchema);
 
+// ================= SERVICIO DE CORREOS BREVO =================
+
+
+async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
+    try {
+        const apiKey = process.env.BREVO_API_KEY;
+        if (!apiKey) {
+            console.warn("[BREVO] API Key no configurada. No se pudo enviar el correo a:", toEmail);
+            return false;
+        }
+
+        const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+            sender: {
+                name: process.env.BREVO_SENDER_NAME || 'LandingGen',
+                email: process.env.BREVO_SENDER_EMAIL || 'no-reply@prestigecloser.com'
+            },
+            to: [{ email: toEmail, name: toName || 'Usuario' }],
+            subject: subject,
+            htmlContent: htmlContent
+        }, {
+            headers: {
+                'accept': 'application/json',
+                'api-key': apiKey,
+                'content-type': 'application/json'
+            }
+        });
+
+        console.log(`[BREVO] Correo enviado con éxito a ${toEmail}. MessageId:`, response.data.messageId);
+        return true;
+    } catch (error) {
+        console.error('[BREVO ERROR] Falló el envío de correo:', error.response?.data || error.message);
+        return false;
+    }
+}
+
+module.exports = { enviarCorreoBrevo };
+
 // Función auxiliar para definir tokens iniciales según el plan
 function getTokensForPlan(plan) {
     switch (plan) {
@@ -944,42 +981,7 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= SERVICIO DE CORREOS BREVO =================
 
-
-async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
-    try {
-        const apiKey = process.env.BREVO_API_KEY;
-        if (!apiKey) {
-            console.warn("[BREVO] API Key no configurada. No se pudo enviar el correo a:", toEmail);
-            return false;
-        }
-
-        const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
-            sender: {
-                name: process.env.BREVO_SENDER_NAME || 'LandingGen',
-                email: process.env.BREVO_SENDER_EMAIL || 'no-reply@prestigecloser.com'
-            },
-            to: [{ email: toEmail, name: toName || 'Usuario' }],
-            subject: subject,
-            htmlContent: htmlContent
-        }, {
-            headers: {
-                'accept': 'application/json',
-                'api-key': apiKey,
-                'content-type': 'application/json'
-            }
-        });
-
-        console.log(`[BREVO] Correo enviado con éxito a ${toEmail}. MessageId:`, response.data.messageId);
-        return true;
-    } catch (error) {
-        console.error('[BREVO ERROR] Falló el envío de correo:', error.response?.data || error.message);
-        return false;
-    }
-}
-
-module.exports = { enviarCorreoBrevo };
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
