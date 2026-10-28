@@ -69,8 +69,6 @@ const Landing = mongoose.model('Landing', landingSchema);
 const User = mongoose.model('User', userSchema);
 
 // ================= SERVICIO DE CORREOS BREVO =================
-
-
 async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
     try {
         const apiKey = process.env.BREVO_API_KEY;
@@ -102,8 +100,6 @@ async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
         return false;
     }
 }
-
-module.exports = { enviarCorreoBrevo };
 
 // Función auxiliar para definir tokens iniciales según el plan
 function getTokensForPlan(plan) {
