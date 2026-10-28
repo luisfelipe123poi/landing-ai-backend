@@ -188,9 +188,30 @@ app.post('/api/register', async (req, res) => {
 
         await newUser.save();
 
+        // 🚀 ENVÍO DE CORREO DE BIENVENIDA VÍA BREVO (CUENTA FREE)
+        try {
+            const { enviarCorreoBrevo } = require('./services/brevoService'); // Asegúrate de ajustar la ruta si está en otro archivo
+            await enviarCorreoBrevo({
+                toEmail: cleanEmail,
+                toName: cleanEmail.split('@')[0],
+                subject: '¡Bienvenido a LandingGen! Tu cuenta Free está lista 🚀',
+                htmlContent: `
+                    <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
+                        <h2 style="color: #818cf8; margin-top: 0;">¡Hola! Tu cuenta Free ha sido creada con éxito</h2>
+                        <p style="color: #94a3b8; line-height: 1.5;">Ya puedes empezar a crear y explorar tus primeras landing pages profesionales en LandingGen y conectar tu WhatsApp en segundos.</p>
+                        <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                    </div>
+                `
+            });
+        } catch (emailErr) {
+            console.error("Error al enviar correo de bienvenida con Brevo:", emailErr);
+            // El registro no debe fallar si el correo de bienvenida presenta algún contratiempo temporal
+        }
+
         const token = jwt.sign({ email: cleanEmail }, JWT_SECRET, { expiresIn: '7d' });
         res.json({ success: true, token, plan, tokens: newUser.tokens });
     } catch (error) {
+        console.error("Error en registro:", error);
         res.status(500).json({ error: 'Error en el servidor' });
     }
 });
@@ -343,7 +364,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// Webhook de Mercado Pago (Actualizado con control de vigencia a 30 días para planes generales)
+// Webhook de Mercado Pago (Actualizado con control de vigencia y correos Brevo)
 // =========================================================================
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
@@ -387,7 +408,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                     .replace('platinum_', '');
                             
                                 // VALIDACIÓN DE EXCLUSIVIDAD GLOBAL EN MONGODB:
-                                // Verifica si cualquier otro usuario ya registró esta plantilla exclusiva
                                 const alreadyClaimed = await User.findOne({
                                     _id: { $ne: user._id },
                                     unlockedPlatinumTemplates: templateKey
@@ -417,6 +437,26 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
                                     await user.save();
                                     console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada y con vigencia hasta ${expirationDate.toISOString()} para ${payerEmail}.`);
+
+                                    // 🚀 ENVÍO DE CORREO BREVO (ALQUILER PLATINUM EXITOSO)
+                                    try {
+                                        const { enviarCorreoBrevo } = require('./services/brevoService');
+                                        await enviarCorreoBrevo({
+                                            toEmail: payerEmail,
+                                            toName: payerEmail.split('@')[0],
+                                            subject: `¡Alquiler Platinum Exclusivo Activado (${templateKey})! 👑`,
+                                            htmlContent: `
+                                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
+                                                    <h2 style="color: #818cf8; margin-top: 0;">¡Alquiler Platinum Confirmado!</h2>
+                                                    <p style="color: #94a3b8; line-height: 1.5;">Has adquirido con éxito el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> por los próximos 30 días.</p>
+                                                    <p style="color: #94a3b8; line-height: 1.5;">Tu vigencia y acceso exclusivo están activos hasta: <strong style="color: #ffffff;">${expirationDate.toLocaleDateString()}</strong>.</p>
+                                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                                                </div>
+                                            `
+                                        });
+                                    } catch (emailErr) {
+                                        console.error("Error al enviar correo Brevo para Platinum:", emailErr);
+                                    }
                                 }
                             } else {
                                 // Asignación unificada de plan y tokens para planes normales (Pro / Agency Platinum)
@@ -430,6 +470,26 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
                                 await user.save();
                                 console.log(`Licencia de ${payerEmail} actualizada por pago exitoso. Plan: ${planDesdeRef}, Páginas asignadas: ${user.tokens}, Vence: ${planExpirationDate.toISOString()}.`);
+
+                                // 🚀 ENVÍO DE CORREO BREVO (PLAN GENERAL EXITOSO)
+                                try {
+                                    const { enviarCorreoBrevo } = require('./services/brevoService');
+                                    await enviarCorreoBrevo({
+                                        toEmail: payerEmail,
+                                        toName: payerEmail.split('@')[0],
+                                        subject: `¡Suscripción Actualizada a Plan ${planDesdeRef.toUpperCase()}! 🎉`,
+                                        htmlContent: `
+                                            <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
+                                                <h2 style="color: #818cf8; margin-top: 0;">¡Pago de Suscripción Aprobado!</h2>
+                                                <p style="color: #94a3b8; line-height: 1.5;">Tu cuenta ha sido actualizada al plan <strong>${planDesdeRef.toUpperCase()}</strong> con éxito.</p>
+                                                <p style="color: #94a3b8; line-height: 1.5;">Tus beneficios y plan general están activos hasta: <strong style="color: #ffffff;">${planExpirationDate.toLocaleDateString()}</strong>.</p>
+                                                <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                                            </div>
+                                        `
+                                    });
+                                } catch (emailErr) {
+                                    console.error("Error al enviar correo Brevo para plan general:", emailErr);
+                                }
                             }
                         }
                     }
@@ -668,10 +728,30 @@ app.get('/:landingId', async (req, res) => {
         if (owner) {
             const now = new Date();
 
-            // 1. VALIDACIÓN DE EXPIARCION DEL PLAN GENERAL (Pro / Agencia Platinum)
+            // 1. VALIDACIÓN DE EXPIRACIÓN DEL PLAN GENERAL (Pro / Agencia Platinum)
             const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
 
             if (planVencido && owner.plan !== 'free') {
+                // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLAN VENCIDO)
+                try {
+                    const { enviarCorreoBrevo } = require('./services/brevoService');
+                    await enviarCorreoBrevo({
+                        toEmail: owner.email,
+                        toName: owner.email.split('@')[0],
+                        subject: '⚠️ Alerta: Tu sitio web se encuentra suspendido por suscripción vencida',
+                        htmlContent: `
+                            <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
+                                <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
+                                <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
+                                <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
+                                <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
+                            </div>
+                        `
+                    });
+                } catch (emailErr) {
+                    console.error("Error al enviar correo Brevo por plan vencido:", emailErr);
+                }
+
                 return res.send(`
                     <!DOCTYPE html>
                     <html lang="es">
@@ -707,6 +787,26 @@ app.get('/:landingId', async (req, res) => {
 
                 // Si no la ha desbloqueado o su suscripción ya venció (más de 30 días)
                 if (!hasUnlocked || isExpired) {
+                    // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLANTILLA PLATINUM VENCIDA)
+                    try {
+                        const { enviarCorreoBrevo } = require('./services/brevoService');
+                        await enviarCorreoBrevo({
+                            toEmail: owner.email,
+                            toName: owner.email.split('@')[0],
+                            subject: `⚠️ Alerta: Plantilla Platinum (${templateKey}) fuera de servicio`,
+                            htmlContent: `
+                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #ef4444; max-width: 600px; margin: auto;">
+                                    <h2 style="color: #ef4444; margin-top: 0;">Plantilla Exclusiva Fuera de Servicio</h2>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> ha expirado sin renovación, por lo que el sitio web asociado se encuentra temporalmente suspendido.</p>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Renueva tu alquiler exclusivo en tu panel de control para restaurar el acceso público inmediatamente.</p>
+                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
+                                </div>
+                            `
+                        });
+                    } catch (emailErr) {
+                        console.error("Error al enviar correo Brevo por plantilla Platinum vencida:", emailErr);
+                    }
+
                     return res.send(`
                         <!DOCTYPE html>
                         <html lang="es">
@@ -843,6 +943,43 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
         res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
     }
 });
+
+// ================= SERVICIO DE CORREOS BREVO =================
+const axios = require('axios');
+
+async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
+    try {
+        const apiKey = process.env.BREVO_API_KEY;
+        if (!apiKey) {
+            console.warn("[BREVO] API Key no configurada. No se pudo enviar el correo a:", toEmail);
+            return false;
+        }
+
+        const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+            sender: {
+                name: process.env.BREVO_SENDER_NAME || 'LandingGen',
+                email: process.env.BREVO_SENDER_EMAIL || 'no-reply@prestigecloser.com'
+            },
+            to: [{ email: toEmail, name: toName || 'Usuario' }],
+            subject: subject,
+            htmlContent: htmlContent
+        }, {
+            headers: {
+                'accept': 'application/json',
+                'api-key': apiKey,
+                'content-type': 'application/json'
+            }
+        });
+
+        console.log(`[BREVO] Correo enviado con éxito a ${toEmail}. MessageId:`, response.data.messageId);
+        return true;
+    } catch (error) {
+        console.error('[BREVO ERROR] Falló el envío de correo:', error.response?.data || error.message);
+        return false;
+    }
+}
+
+module.exports = { enviarCorreoBrevo };
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
