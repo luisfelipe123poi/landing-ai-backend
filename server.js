@@ -242,12 +242,13 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         let infoPlan;
         let planId = planRaw;
 
-        // Validar si es una compra de Plantilla Exclusiva Platinum
-        if (planRaw.startsWith('platinum_template_')) {
-            const templateKey = planRaw.replace('platinum_template_', '');
+        // Validar si es una compra de Plantilla Exclusiva Platinum (soporta 'platinum_template_' o 'platinum_')
+        if (planRaw.startsWith('platinum_template_') || planRaw.startsWith('platinum_')) {
+            const templateKey = planRaw
+                .replace('platinum_template_', '')
+                .replace('platinum_', '');
             
             // 1. VALIDACIÓN DE EXCLUSIVIDAD GLOBAL PREVIA (Backend Checkout)
-            // Verificamos si CUALQUIER OTRO usuario ya tiene esta plantilla desbloqueada
             const alreadyTaken = await User.findOne({
                 email: { $ne: emailCliente },
                 unlockedPlatinumTemplates: templateKey
@@ -261,15 +262,18 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
             // Verificar si el usuario actual ya la posee
             const currentUser = await User.findOne({ email: emailCliente });
-            if (currentUser && currentUser.unlockedPlatinumTemplates.includes(templateKey)) {
+            if (currentUser && currentUser.unlockedPlatinumTemplates && currentUser.unlockedPlatinumTemplates.includes(templateKey)) {
                 return res.status(400).json({ error: 'Ya tienes desbloqueada esta plantilla exclusiva.' });
             }
 
             infoPlan = {
-                nombre: `Plantilla Exclusiva Platinum (${templateKey})`,
-                precioUSD: 30,
-                tokens: 0 // Las plantillas no restan páginas de límite mensual, solo se suman al array
+                nombre: `Alquiler Plantilla Platinum (${templateKey})`,
+                precioUSD: 25, // Fijo en 25 USD mensuales
+                tokens: 0 
             };
+
+            // Aseguramos que el planId enviado a external_reference mantenga el formato correcto para el webhook
+            planId = `platinum_template_${templateKey}`;
         } else if (preciosUSD[planRaw]) {
             infoPlan = preciosUSD[planRaw];
         } else {
