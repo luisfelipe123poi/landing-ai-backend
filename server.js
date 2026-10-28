@@ -52,6 +52,7 @@ const userSchema = new mongoose.Schema({
     passwordHash: { type: String, required: true },
     plan: { type: String, default: 'free' },
     tokens: { type: Number, default: 200 },
+    planExpiresAt: { type: Date, default: null }, // <--- NUEVO: Fecha de expiración del plan general (Pro / Agencia Platinum)
     landings: [{
         landingId: String,
         business: String,
@@ -60,7 +61,8 @@ const userSchema = new mongoose.Schema({
         createdAt: String
     }],
     unlockedPlatinumTemplates: { type: [String], default: [] },
-    activeExclusiveRentals: [String]
+    activeExclusiveRentals: [String],
+    subscriptions: { type: Map, of: Object, default: {} } // <--- Almacena vigencia y estado de plantillas Platinum individuales (expiresAt)
 });
 
 const Landing = mongoose.model('Landing', landingSchema);
@@ -341,7 +343,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 });
 
 // =========================================================================
-// Webhook de Mercado Pago (Actualizado con control de vigencia a 30 días)
+// Webhook de Mercado Pago (Actualizado con control de vigencia a 30 días para planes generales)
 // =========================================================================
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
@@ -383,7 +385,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                 const templateKey = planDesdeRef
                                     .replace('platinum_template_', '')
                                     .replace('platinum_', '');
-                                
+                            
                                 // VALIDACIÓN DE EXCLUSIVIDAD GLOBAL EN MONGODB:
                                 // Verifica si cualquier otro usuario ya registró esta plantilla exclusiva
                                 const alreadyClaimed = await User.findOne({
@@ -417,11 +419,17 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                     console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada y con vigencia hasta ${expirationDate.toISOString()} para ${payerEmail}.`);
                                 }
                             } else {
-                                // Asignación unificada de plan y tokens para planes normales
+                                // Asignación unificada de plan y tokens para planes normales (Pro / Agency Platinum)
                                 user.plan = planDesdeRef;
                                 user.tokens = getTokensForPlan(planDesdeRef);
+                                
+                                // Calcular y actualizar la vigencia de 30 días para el plan general
+                                const planExpirationDate = new Date();
+                                planExpirationDate.setDate(planExpirationDate.getDate() + 30);
+                                user.planExpiresAt = planExpirationDate;
+
                                 await user.save();
-                                console.log(`Licencia de ${payerEmail} actualizada por pago exitoso. Plan: ${planDesdeRef}, Páginas asignadas: ${user.tokens}.`);
+                                console.log(`Licencia de ${payerEmail} actualizada por pago exitoso. Plan: ${planDesdeRef}, Páginas asignadas: ${user.tokens}, Vence: ${planExpirationDate.toISOString()}.`);
                             }
                         }
                     }
@@ -625,7 +633,6 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
-// ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
 app.get('/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
@@ -655,12 +662,40 @@ app.get('/:landingId', async (req, res) => {
             `);
         }
 
-        // VALIDACIÓN DE VIGENCIA PLATINUM (30 DÍAS)
-        const templateKey = landingData.templateKey;
-        if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
-            const owner = await User.findOne({ email: landingData.userEmail });
-            
-            if (owner) {
+        // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS
+        const owner = await User.findOne({ email: landingData.userEmail });
+
+        if (owner) {
+            const now = new Date();
+
+            // 1. VALIDACIÓN DE EXPIARCION DEL PLAN GENERAL (Pro / Agencia Platinum)
+            const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
+
+            if (planVencido && owner.plan !== 'free') {
+                return res.send(`
+                    <!DOCTYPE html>
+                    <html lang="es">
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>Suscripción Vencida - Servicio Suspendido</title>
+                        <script src="https://cdn.tailwindcss.com"></script>
+                        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                    </head>
+                    <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                        <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
+                            <div class="text-amber-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                            <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
+                            <p class="text-gray-400 text-sm mb-6">La suscripción mensual del plan de este sitio web ha expirado y el pago automático no se ha completado. El sitio se encuentra suspendido temporalmente.</p>
+                            <span class="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación de plan</span>
+                        </div>
+                    </body>
+                    </html>
+                `);
+            }
+
+            // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
+            const templateKey = landingData.templateKey;
+            if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
                 const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
                 
                 // Obtener fecha de expiración del mapa o objeto subscriptions
@@ -668,7 +703,6 @@ app.get('/:landingId', async (req, res) => {
                     ? owner.subscriptions.get(templateKey) 
                     : owner?.subscriptions?.[templateKey];
 
-                const now = new Date();
                 const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
 
                 // Si no la ha desbloqueado o su suscripción ya venció (más de 30 días)
