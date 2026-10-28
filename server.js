@@ -336,7 +336,9 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
     }
 });
 
-// Webhook de Mercado Pago
+// =========================================================================
+// Webhook de Mercado Pago (Actualizado con control de vigencia a 30 días)
+// =========================================================================
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -369,8 +371,14 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         
                         const user = await User.findOne({ email: payerEmail });
                         if (user) {
-                            if (planDesdeRef.startsWith('platinum_template_')) {
-                                const templateKey = planDesdeRef.replace('platinum_template_', '');
+                            // Verificamos si el pago corresponde a una plantilla Platinum (soporta ambos prefijos)
+                            const isPlatinumPayment = planDesdeRef.startsWith('platinum_template_') || planDesdeRef.startsWith('platinum_');
+
+                            if (isPlatinumPayment) {
+                                // Extraer la clave limpia de la plantilla sin importar el prefijo
+                                const templateKey = planDesdeRef
+                                    .replace('platinum_template_', '')
+                                    .replace('platinum_', '');
                                 
                                 // VALIDACIÓN DE EXCLUSIVIDAD GLOBAL EN MONGODB:
                                 // Verifica si cualquier otro usuario ya registró esta plantilla exclusiva
@@ -382,14 +390,30 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                 if (alreadyClaimed) {
                                     console.warn(`[EXCLUSIVIDAD VIOLADA] La plantilla ${templateKey} ya fue alquilada previamente por otro usuario (${alreadyClaimed.email}). No se asignó a ${payerEmail}.`);
                                 } else {
+                                    // Calcular fecha de expiración exacta (30 días de vigencia)
+                                    const expirationDate = new Date();
+                                    expirationDate.setDate(expirationDate.getDate() + 30);
+
+                                    // Aseguramos que existan los objetos en el esquema si no están inicializados
+                                    if (!user.unlockedPlatinumTemplates) user.unlockedPlatinumTemplates = [];
+                                    if (!user.subscriptions) user.subscriptions = {};
+
                                     if (!user.unlockedPlatinumTemplates.includes(templateKey)) {
                                         user.unlockedPlatinumTemplates.push(templateKey);
-                                        await user.save();
-                                        console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada exitosamente a ${payerEmail}.`);
                                     }
+
+                                    // Guardamos o renovamos la vigencia de los 30 días para esta plantilla
+                                    if (typeof user.subscriptions.set === 'function') {
+                                        user.subscriptions.set(templateKey, { active: true, expiresAt: expirationDate });
+                                    } else {
+                                        user.subscriptions[templateKey] = { active: true, expiresAt: expirationDate };
+                                    }
+
+                                    await user.save();
+                                    console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada y con vigencia hasta ${expirationDate.toISOString()} para ${payerEmail}.`);
                                 }
                             } else {
-                                // Asignación unificada de plan y tokens (límites exactos de páginas)
+                                // Asignación unificada de plan y tokens para planes normales
                                 user.plan = planDesdeRef;
                                 user.tokens = getTokensForPlan(planDesdeRef);
                                 await user.save();
@@ -597,6 +621,7 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
+// ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
 app.get('/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
@@ -624,6 +649,47 @@ app.get('/:landingId', async (req, res) => {
                 </body>
                 </html>
             `);
+        }
+
+        // VALIDACIÓN DE VIGENCIA PLATINUM (30 DÍAS)
+        const templateKey = landingData.templateKey;
+        if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
+            const owner = await User.findOne({ email: landingData.userEmail });
+            
+            if (owner) {
+                const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
+                
+                // Obtener fecha de expiración del mapa o objeto subscriptions
+                const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function' 
+                    ? owner.subscriptions.get(templateKey) 
+                    : owner?.subscriptions?.[templateKey];
+
+                const now = new Date();
+                const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+
+                // Si no la ha desbloqueado o su suscripción ya venció (más de 30 días)
+                if (!hasUnlocked || isExpired) {
+                    return res.send(`
+                        <!DOCTYPE html>
+                        <html lang="es">
+                        <head>
+                            <meta charset="UTF-8">
+                            <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
+                            <script src="https://cdn.tailwindcss.com"></script>
+                            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                        </head>
+                        <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                            <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
+                                <div class="text-red-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
+                                <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado por su propietario. El sitio web se encuentra temporalmente suspendido.</p>
+                                <span class="inline-block bg-red-500/10 text-red-400 border border-red-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación</span>
+                            </div>
+                        </body>
+                        </html>
+                    `);
+                }
+            }
         }
 
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -663,7 +729,9 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
+// =========================================================================
 // 2. ENDPOINT DE ACTUALIZACIÓN (PUT) POR SI EL EDITOR USA ESTA RUTA AL GUARDAR
+// =========================================================================
 app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
@@ -676,14 +744,22 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
         const existingLanding = await Landing.findOne({ landingId, userEmail });
         const finalTemplateKey = templateKey || existingLanding?.templateKey || 'cafe';
 
-        if (esPlantillaPlatinum(finalTemplateKey)) {
+        if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(finalTemplateKey)) {
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(finalTemplateKey);
             
-            if (!hasUnlocked) {
+            // Verificar si la suscripción de 30 días ya expiró
+            const subData = user.subscriptions && typeof user.subscriptions.get === 'function' 
+                ? user.subscriptions.get(finalTemplateKey) 
+                : user?.subscriptions?.[finalTemplateKey];
+            
+            const now = new Date();
+            const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+
+            if (!hasUnlocked || isExpired) {
                 const preferenceData = {
                     body: {
                         items: [{
-                            title: `Suscripción Mensual Plantilla Exclusiva: ${finalTemplateKey}`,
+                            title: `Renovación / Alquiler Plantilla Exclusiva: ${finalTemplateKey}`,
                             quantity: 1,
                             currency_id: 'COP',
                             unit_price: 300000 
@@ -707,7 +783,8 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
                 return res.status(403).json({
                     requiresPayment: true,
                     init_point: initPoint,
-                    error: 'Las plantillas Platinum requieren una suscripción mes a mes aparte para su publicación.'
+                    error: 'ACCESO_RESTRINGIDO_PAGO',
+                    message: 'Las plantillas Platinum requieren una suscripción vigente mes a mes para su publicación.'
                 });
             }
         }
@@ -724,6 +801,7 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
 
         res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
     } catch (error) {
+        console.error('Error en PUT /api/landings/:landingId:', error);
         res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
     }
 });
