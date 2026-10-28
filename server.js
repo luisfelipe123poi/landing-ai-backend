@@ -221,9 +221,8 @@ app.post('/api/register', async (req, res) => {
 
         await newUser.save();
 
-        // 🚀 ENVÍO DE CORREO DE BIENVENIDA VÍA BREVO (CUENTA FREE)
+        // 🚀 ENVÍO DE CORREO DE BIENVENIDA VÍA BREVO (DIRECTO)
         try {
-            const { enviarCorreoBrevo } = require('./services/brevoService'); // Asegúrate de ajustar la ruta si está en otro archivo
             await enviarCorreoBrevo({
                 toEmail: cleanEmail,
                 toName: cleanEmail.split('@')[0],
@@ -238,7 +237,6 @@ app.post('/api/register', async (req, res) => {
             });
         } catch (emailErr) {
             console.error("Error al enviar correo de bienvenida con Brevo:", emailErr);
-            // El registro no debe fallar si el correo de bienvenida presenta algún contratiempo temporal
         }
 
         const token = jwt.sign({ email: cleanEmail }, JWT_SECRET, { expiresIn: '7d' });
