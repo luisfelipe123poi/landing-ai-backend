@@ -467,15 +467,16 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
 app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
-        const { business, htmlContent, templateKey, whatsapp } = req.body;
+        const { business, htmlContent, templateKey, whatsapp, isPlatinum } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
         const activeTemplateKey = templateKey || 'cafe';
 
-        // Detectar si es plantilla Platinum
-        const isPlatinumTemplate = activeTemplateKey.startsWith('platinum_') || 
+        // Detección estricta y robusta de plantilla Platinum (por bandera del cliente o por convención de clave)
+        const isPlatinumTemplate = isPlatinum === true || 
+                                   activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
                                    activeTemplateKey.includes('platinum');
 
@@ -485,11 +486,11 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             if (!hasUnlocked) {
                 return res.status(403).json({ 
                     error: 'ACCESO_RESTRINGIDO_PAGO',
-                    message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler antes de editarla.' 
+                    message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler antes de publicarla.' 
                 });
             }
         } else {
-            // Validación de tokens para planes normales
+            // Validación de tokens para planes normales / plantillas estándar
             if (user.tokens !== undefined && user.tokens <= 0) {
                 return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía.' });
             }
