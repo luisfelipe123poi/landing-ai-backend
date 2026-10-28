@@ -945,7 +945,7 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= SERVICIO DE CORREOS BREVO =================
-const axios = require('axios');
+
 
 async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
     try {
