@@ -43,6 +43,7 @@ const landingSchema = new mongoose.Schema({
     userEmail: { type: String, required: true },
     business: { type: String },
     templateKey: { type: String }, // <--- Almacena la plantilla exacta
+    slug: { type: String, required: true, unique: true, index: true }, // <--- NUEVO: Subdominio único para el enlace personalizado
     htmlContent: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
 });
@@ -52,11 +53,12 @@ const userSchema = new mongoose.Schema({
     passwordHash: { type: String, required: true },
     plan: { type: String, default: 'free' },
     tokens: { type: Number, default: 200 },
-    planExpiresAt: { type: Date, default: null }, // <--- NUEVO: Fecha de expiración del plan general (Pro / Agencia Platinum)
+    planExpiresAt: { type: Date, default: null }, // <--- Fecha de expiración del plan general (Pro / Agencia Platinum)
     landings: [{
         landingId: String,
         business: String,
         templateKey: String, // <--- Acceso rápido a la plantilla en el panel
+        slug: String,        // <--- NUEVO: Para acceso rápido y precarga al editar
         url: String,
         createdAt: String
     }],
@@ -606,7 +608,8 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
 app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
-        const { business, htmlContent, templateKey, whatsapp, isPlatinum } = req.body;
+        // 1. Extraer el 'slug' enviado desde el frontend
+        const { business, htmlContent, templateKey, whatsapp, isPlatinum, slug } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
         if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
@@ -635,22 +638,28 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             }
         }
 
-        const landingId = Math.random().toString(36).substring(2, 9);
-        
-        // 🚀 CONVERSIÓN A SUBDOMINIO LIMPIO PARA CUSTOM LANDINGS
-        const rawBusiness = business || 'Mi Negocio';
-        const subdomain = rawBusiness.toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]/g, '-')
-            .replace(/-+/g, '-')
-            .replace(/^-|-$/g, '');
+        // 2. Validar y limpiar el slug personalizado recibido
+        const cleanSlug = slug 
+            ? slug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-_]/g, '').replace(/-+/g, '-')
+            : '';
 
-        const finalSubdomain = subdomain || landingId;
-        const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
+        if (!cleanSlug) {
+            return res.status(400).json({ error: 'Por favor, proporciona un enlace o subdominio válido.' });
+        }
+
+        // 3. Comprobar si el slug ya está en uso por otra página en la base de datos
+        const existingLandingWithSlug = await Landing.findOne({ slug: cleanSlug });
+        if (existingLandingWithSlug) {
+            return res.status(400).json({ error: `El enlace "${cleanSlug}" ya está en uso. Por favor, elige otro.` });
+        }
+
+        const landingId = Math.random().toString(36).substring(2, 9);
+        const landingUrl = `https://${cleanSlug}.${MAIN_DOMAIN}`;
         
+        // 4. Guardar con el campo 'slug'
         const newLanding = new Landing({
             landingId,
-            subdomain: finalSubdomain,
+            slug: cleanSlug,
             userEmail: req.user.email,
             business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
@@ -666,7 +675,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         if (!user.landings) user.landings = [];
         user.landings.push({ 
             landingId, 
-            subdomain: finalSubdomain,
+            slug: cleanSlug,
             business: business || 'Mi Negocio', 
             templateKey: activeTemplateKey, 
             url: landingUrl, 
