@@ -559,10 +559,21 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             .replace(/\{\{WHATSAPP\}\}/g, cleanWhatsapp);
 
         const landingId = Math.random().toString(36).substring(2, 9);
-        const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
+        
+        // 🚀 CONVERSIÓN A SUBDOMINIO LIMPIO (Ej: "Mi Barbería!" -> "mi-barberia")
+        const rawBusiness = business || 'negocio';
+        const subdomain = rawBusiness.toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remueve tildes
+            .replace(/[^a-z0-9]/g, '-') // Cambia espacios y símbolos por guiones
+            .replace(/-+/g, '-') // Evita guiones múltiples
+            .replace(/^-|-$/g, ''); // Limpia guiones al inicio o final
+
+        const finalSubdomain = subdomain || landingId; // Respaldo si el nombre viene vacío
+        const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
         
         const landingInfo = { 
             landingId, 
+            subdomain: finalSubdomain,
             business, 
             templateKey: activeTemplateKey, 
             url: landingUrl, 
@@ -571,6 +582,7 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const newLanding = new Landing({
             landingId,
+            subdomain: finalSubdomain,
             userEmail: req.user.email,
             business,
             templateKey: activeTemplateKey,
@@ -601,7 +613,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
         const activeTemplateKey = templateKey || 'cafe';
 
-        // Detección estricta y robusta de plantilla Platinum (por bandera del cliente o por convención de clave)
+        // Detección estricta y robusta de plantilla Platinum
         const isPlatinumTemplate = isPlatinum === true || 
                                    activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
@@ -624,10 +636,21 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         }
 
         const landingId = Math.random().toString(36).substring(2, 9);
-        const landingUrl = `https://landinggen.prestigecloser.com/preview/${landingId}`;
+        
+        // 🚀 CONVERSIÓN A SUBDOMINIO LIMPIO PARA CUSTOM LANDINGS
+        const rawBusiness = business || 'Mi Negocio';
+        const subdomain = rawBusiness.toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '');
+
+        const finalSubdomain = subdomain || landingId;
+        const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
         
         const newLanding = new Landing({
             landingId,
+            subdomain: finalSubdomain,
             userEmail: req.user.email,
             business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
@@ -643,6 +666,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         if (!user.landings) user.landings = [];
         user.landings.push({ 
             landingId, 
+            subdomain: finalSubdomain,
             business: business || 'Mi Negocio', 
             templateKey: activeTemplateKey, 
             url: landingUrl, 
@@ -724,118 +748,68 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
-app.get('/:landingId', async (req, res) => {
+// ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
+app.get('/', async (req, res) => {
     try {
-        const { landingId } = req.params;
-        
-        if (landingId === 'api' || landingId === 'favicon.ico') {
-            return res.status(404).send('No encontrado');
-        }
+        const host = req.headers.host || ''; // Ej: barberia-luis.landinggen.prestigecloser.com o landinggen.prestigecloser.com
+        const parts = host.split('.');
 
-        const landingData = await Landing.findOne({ landingId });
+        // Detectar si el usuario está accediendo mediante un subdominio de marca (ej. "barberia-luis")
+        const isSubdomain = parts.length > 3 || (parts.length === 3 && parts[0] !== 'www');
 
-        if (!landingData || !landingData.htmlContent) {
-            return res.status(404).send(`
-                <!DOCTYPE html>
-                <html lang="es">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>Página no encontrada</title>
-                    <script src="https://cdn.tailwindcss.com"></script>
-                </head>
-                <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
-                    <div class="text-center space-y-3">
-                        <h1 class="text-4xl font-bold">404</h1>
-                        <p class="text-slate-400">La página web que buscas no existe o fue eliminada.</p>
-                    </div>
-                </body>
-                </html>
-            `);
-        }
+        if (isSubdomain) {
+            const subdominioBuscado = parts[0].toLowerCase(); // Extrae "barberia-luis"
 
-        // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS
-        const owner = await User.findOne({ email: landingData.userEmail });
+            // Buscar la landing directamente por su subdominio en MongoDB
+            const landingData = await Landing.findOne({ subdomain: subdominioBuscado });
 
-        if (owner) {
-            const now = new Date();
-
-            // 1. VALIDACIÓN DE EXPIRACIÓN DEL PLAN GENERAL (Pro / Agencia Platinum)
-            const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
-
-            if (planVencido && owner.plan !== 'free') {
-                // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLAN VENCIDO)
-                try {
-                    const { enviarCorreoBrevo } = require('./services/brevoService');
-                    await enviarCorreoBrevo({
-                        toEmail: owner.email,
-                        toName: owner.email.split('@')[0],
-                        subject: '⚠️ Alerta: Tu sitio web se encuentra suspendido por suscripción vencida',
-                        htmlContent: `
-                            <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
-                                <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
-                                <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
-                                <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
-                                <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
-                            </div>
-                        `
-                    });
-                } catch (emailErr) {
-                    console.error("Error al enviar correo Brevo por plan vencido:", emailErr);
-                }
-
-                return res.send(`
+            if (!landingData || !landingData.htmlContent) {
+                return res.status(404).send(`
                     <!DOCTYPE html>
                     <html lang="es">
                     <head>
                         <meta charset="UTF-8">
-                        <title>Suscripción Vencida - Servicio Suspendido</title>
+                        <title>Página no encontrada</title>
                         <script src="https://cdn.tailwindcss.com"></script>
-                        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
                     </head>
-                    <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                        <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
-                            <div class="text-amber-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                            <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
-                            <p class="text-gray-400 text-sm mb-6">La suscripción mensual del plan de este sitio web ha expirado y el pago automático no se ha completado. El sitio se encuentra suspendido temporalmente.</p>
-                            <span class="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación de plan</span>
+                    <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
+                        <div class="text-center space-y-3">
+                            <h1 class="text-4xl font-bold text-indigo-500">404</h1>
+                            <p class="text-slate-400">La página web que buscas no existe o el subdominio está inactivo.</p>
                         </div>
                     </body>
                     </html>
                 `);
             }
 
-            // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
-            const templateKey = landingData.templateKey;
-            if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
-                const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
-                
-                // Obtener fecha de expiración del mapa o objeto subscriptions
-                const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function' 
-                    ? owner.subscriptions.get(templateKey) 
-                    : owner?.subscriptions?.[templateKey];
+            // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS (Tus reglas originales)
+            const owner = await User.findOne({ email: landingData.userEmail });
 
-                const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+            if (owner) {
+                const now = new Date();
 
-                // Si no la ha desbloqueado o su suscripción ya venció (más de 30 días)
-                if (!hasUnlocked || isExpired) {
-                    // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLANTILLA PLATINUM VENCIDA)
+                // 1. VALIDACIÓN DE EXPIRACIÓN DEL PLAN GENERAL (Pro / Agencia Platinum)
+                const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
+
+                if (planVencido && owner.plan !== 'free') {
+                    // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLAN VENCIDO)
                     try {
                         const { enviarCorreoBrevo } = require('./services/brevoService');
                         await enviarCorreoBrevo({
                             toEmail: owner.email,
                             toName: owner.email.split('@')[0],
-                            subject: `⚠️ Alerta: Plantilla Platinum (${templateKey}) fuera de servicio`,
+                            subject: '⚠️ Alerta: Tu sitio web se encuentra suspendido por suscripción vencida',
                             htmlContent: `
-                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #ef4444; max-width: 600px; margin: auto;">
-                                    <h2 style="color: #ef4444; margin-top: 0;">Plantilla Exclusiva Fuera de Servicio</h2>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> ha expirado sin renovación, por lo que el sitio web asociado se encuentra temporalmente suspendido.</p>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Renueva tu alquiler exclusivo en tu panel de control para restaurar el acceso público inmediatamente.</p>
-                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
+                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
+                                    <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
+                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
                                 </div>
                             `
                         });
                     } catch (emailErr) {
-                        console.error("Error al enviar correo Brevo por plantilla Platinum vencida:", emailErr);
+                        console.error("Error al enviar correo Brevo por plan vencido:", emailErr);
                     }
 
                     return res.send(`
@@ -843,28 +817,102 @@ app.get('/:landingId', async (req, res) => {
                         <html lang="es">
                         <head>
                             <meta charset="UTF-8">
-                            <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
+                            <title>Suscripción Vencida - Servicio Suspendido</title>
                             <script src="https://cdn.tailwindcss.com"></script>
                             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
                         </head>
                         <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                            <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
-                                <div class="text-red-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                                <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
-                                <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado por su propietario. El sitio web se encuentra temporalmente suspendido.</p>
-                                <span class="inline-block bg-red-500/10 text-red-400 border border-red-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación</span>
+                            <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
+                                <div class="text-amber-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
+                                <p class="text-gray-400 text-sm mb-6">La suscripción mensual del plan de este sitio web ha expirado y el pago automático no se ha completado. El sitio se encuentra suspendido temporalmente.</p>
+                                <span class="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación de plan</span>
                             </div>
                         </body>
                         </html>
                     `);
                 }
+
+                // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
+                const templateKey = landingData.templateKey;
+                if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
+                    const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
+                    
+                    const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function' 
+                        ? owner.subscriptions.get(templateKey) 
+                        : owner?.subscriptions?.[templateKey];
+
+                    const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+
+                    if (!hasUnlocked || isExpired) {
+                        // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLANTILLA PLATINUM VENCIDA)
+                        try {
+                            const { enviarCorreoBrevo } = require('./services/brevoService');
+                            await enviarCorreoBrevo({
+                                toEmail: owner.email,
+                                toName: owner.email.split('@')[0],
+                                subject: `⚠️ Alerta: Plantilla Platinum (${templateKey}) fuera de servicio`,
+                                htmlContent: `
+                                    <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #ef4444; max-width: 600px; margin: auto;">
+                                        <h2 style="color: #ef4444; margin-top: 0;">Plantilla Exclusiva Fuera de Servicio</h2>
+                                        <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> ha expirado sin renovación, por lo que el sitio web asociado se encuentra temporalmente suspendido.</p>
+                                        <p style="color: #94a3b8; line-height: 1.5;">Renueva tu alquiler exclusivo en tu panel de control para restaurar el acceso público inmediatamente.</p>
+                                        <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
+                                    </div>
+                                `
+                            });
+                        } catch (emailErr) {
+                            console.error("Error al enviar correo Brevo por plantilla Platinum vencida:", emailErr);
+                        }
+
+                        return res.send(`
+                            <!DOCTYPE html>
+                            <html lang="es">
+                            <head>
+                                <meta charset="UTF-8">
+                                <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
+                                <script src="https://cdn.tailwindcss.com"></script>
+                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                            </head>
+                            <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                                <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
+                                    <div class="text-red-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                    <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
+                                    <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado por su propietario. El sitio web se encuentra temporalmente suspendido.</p>
+                                    <span class="inline-block bg-red-500/10 text-red-400 border border-red-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación</span>
+                                </div>
+                            </body>
+                            </html>
+                        `);
+                    }
+                }
             }
+
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(landingData.htmlContent);
         }
 
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.send(landingData.htmlContent);
+        // Si entran a la raíz principal (landinggen.prestigecloser.com) sin subdominio -> Muestras la portada del SaaS
+        res.send(`
+            <!DOCTYPE html>
+            <html lang="es">
+            <head>
+                <meta charset="UTF-8">
+                <title>LandingGen - Creador de Landing Pages</title>
+                <script src="https://cdn.tailwindcss.com"></script>
+            </head>
+            <body class="bg-slate-950 text-white flex items-center justify-center h-screen text-center px-4">
+                <div class="space-y-4 max-w-xl">
+                    <h1 class="text-5xl font-extrabold text-indigo-400">LandingGen 🚀</h1>
+                    <p class="text-slate-400 text-lg">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos.</p>
+                </div>
+            </body>
+            </html>
+        `);
+
     } catch (error) {
-        res.status(500).send('Error interno del servidor al cargar la página');
+        console.error('Error interno del servidor al procesar el subdominio:', error);
+        res.status(500).send('Error interno del servidor');
     }
 });
 
