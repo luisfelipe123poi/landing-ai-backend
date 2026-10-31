@@ -783,8 +783,13 @@ app.get('/', async (req, res) => {
         if (isSubdomain) {
             const subdominioBuscado = parts[0].toLowerCase(); // Extrae "barberia-luis"
 
-            // 🛠️ CORRECCIÓN: Buscar la landing por su 'slug' en lugar de 'subdomain'
-            const landingData = await Landing.findOne({ slug: subdominioBuscado });
+            // 🛠️ BÚSQUEDA DUAL ROBUSTA: Busca tanto por 'slug' como por 'subdomain' para evitar errores en iframes
+            const landingData = await Landing.findOne({ 
+                $or: [
+                    { slug: subdominioBuscado }, 
+                    { subdomain: subdominioBuscado }
+                ] 
+            });
 
             if (!landingData || !landingData.htmlContent) {
                 return res.status(404).send(`
@@ -858,7 +863,6 @@ app.get('/', async (req, res) => {
 
                 // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
                 const templateKey = landingData.templateKey;
-                // Asegúrate de tener declarada la función esPlantillaPlatinum arriba en tu archivo
                 if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
                     const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
                     
