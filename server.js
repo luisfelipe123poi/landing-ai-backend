@@ -70,6 +70,12 @@ const userSchema = new mongoose.Schema({
 const Landing = mongoose.model('Landing', landingSchema);
 const User = mongoose.model('User', userSchema);
 
+function esPlantillaPlatinum(templateKey) {
+    if (!templateKey) return false;
+    const key = templateKey.toLowerCase();
+    return key.startsWith('platinum_') || key.startsWith('platinum-') || key.includes('platinum');
+}
+
 // ================= SERVICIO DE CORREOS BREVO =================
 async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
     try {
@@ -756,7 +762,6 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= RUTA PÚBLICA PARA SERVIR LA LANDING ESTÁTICA =================
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
 app.get('/', async (req, res) => {
     try {
@@ -769,8 +774,8 @@ app.get('/', async (req, res) => {
         if (isSubdomain) {
             const subdominioBuscado = parts[0].toLowerCase(); // Extrae "barberia-luis"
 
-            // Buscar la landing directamente por su subdominio en MongoDB
-            const landingData = await Landing.findOne({ subdomain: subdominioBuscado });
+            // 🛠️ CORRECCIÓN: Buscar la landing por su 'slug' en lugar de 'subdomain'
+            const landingData = await Landing.findOne({ slug: subdominioBuscado });
 
             if (!landingData || !landingData.htmlContent) {
                 return res.status(404).send(`
@@ -791,7 +796,7 @@ app.get('/', async (req, res) => {
                 `);
             }
 
-            // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS (Tus reglas originales)
+            // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS
             const owner = await User.findOne({ email: landingData.userEmail });
 
             if (owner) {
@@ -844,6 +849,7 @@ app.get('/', async (req, res) => {
 
                 // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
                 const templateKey = landingData.templateKey;
+                // Asegúrate de tener declarada la función esPlantillaPlatinum arriba en tu archivo
                 if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
                     const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
                     
