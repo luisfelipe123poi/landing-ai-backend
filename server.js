@@ -545,6 +545,8 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
+// ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
+
 app.post('/api/generate', verifyToken, async (req, res) => {
     try {
         const { templateName, business, tagline, description, whatsapp } = req.body;
@@ -568,11 +570,11 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         
-        // 🚀 CONVERSIÓN A SUBDOMINIO LIMPIO (Ej: "Mi Barbería!" -> "mi-barberia")
+        // 🚀 CONVERSIÓN A SUBDOMINIO / SLUG LIMPIO
         const rawBusiness = business || 'negocio';
         const subdomain = rawBusiness.toLowerCase()
             .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remueve tildes
-            .replace(/[^a-z0-9]/g, '-') // Cambia espacios y símbolos por guiones
+            .replace(/[^a-z0-9-_]/g, '-') // Cambia espacios y símbolos por guiones
             .replace(/-+/g, '-') // Evita guiones múltiples
             .replace(/^-|-$/g, ''); // Limpia guiones al inicio o final
 
@@ -581,7 +583,8 @@ app.post('/api/generate', verifyToken, async (req, res) => {
         
         const landingInfo = { 
             landingId, 
-            subdomain: finalSubdomain,
+            slug: finalSubdomain,
+            subdomain: finalSubdomain, // Mantenemos ambos para compatibilidad total con el dashboard
             business, 
             templateKey: activeTemplateKey, 
             url: landingUrl, 
@@ -590,7 +593,8 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const newLanding = new Landing({
             landingId,
-            subdomain: finalSubdomain,
+            slug: finalSubdomain,
+            subdomain: finalSubdomain, // 🛠️ Guardamos ambos campos en la BD
             userEmail: req.user.email,
             business,
             templateKey: activeTemplateKey,
@@ -653,8 +657,11 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             return res.status(400).json({ error: 'Por favor, proporciona un enlace o subdominio válido.' });
         }
 
-        // 3. Comprobar si el slug ya está en uso por otra página en la base de datos
-        const existingLandingWithSlug = await Landing.findOne({ slug: cleanSlug });
+        // 3. Comprobar si el slug / subdomain ya está en uso por otra página en la base de datos
+        const existingLandingWithSlug = await Landing.findOne({ 
+            $or: [{ slug: cleanSlug }, { subdomain: cleanSlug }] 
+        });
+        
         if (existingLandingWithSlug) {
             return res.status(400).json({ error: `El enlace "${cleanSlug}" ya está en uso. Por favor, elige otro.` });
         }
@@ -662,10 +669,11 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${cleanSlug}.${MAIN_DOMAIN}`;
         
-        // 4. Guardar con el campo 'slug'
+        // 4. Guardar asignando ambos campos (slug y subdomain) para evitar fallos en el iframe
         const newLanding = new Landing({
             landingId,
             slug: cleanSlug,
+            subdomain: cleanSlug, // 🛠️ Sincronizado para que el dashboard y el iframe carguen bien
             userEmail: req.user.email,
             business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
@@ -682,6 +690,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         user.landings.push({ 
             landingId, 
             slug: cleanSlug,
+            subdomain: cleanSlug,
             business: business || 'Mi Negocio', 
             templateKey: activeTemplateKey, 
             url: landingUrl, 
