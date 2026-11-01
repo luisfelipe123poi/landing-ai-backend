@@ -76,6 +76,7 @@ function esPlantillaPlatinum(templateKey) {
     return key.startsWith('platinum_') || key.startsWith('platinum-') || key.includes('platinum');
 }
 
+
 // ================= SERVICIO DE CORREOS BREVO =================
 async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
     try {
@@ -202,6 +203,19 @@ function verifyToken(req, res, next) {
         next();
     });
 }
+
+app.use((req, res, next) => {
+    // Permitir que los recursos de terceros (Tailwind, FontAwesome, Fuentes) carguen sin bloqueos CSP
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    // Relajar políticas de seguridad de contenido para evitar bloqueos de scripts en subdominios
+    res.setHeader(
+        "Content-Security-Policy",
+        "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
+    );
+    next();
+});
 
 // ================= ENDPOINTS DE AUTENTICACIÓN =================
 app.post('/api/register', async (req, res) => {
