@@ -29,9 +29,17 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// ================= CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CACHÉ) =================
+// ================= CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CORREGIDA) =================
 const path = require('path');
-app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.css')) {
+            res.setHeader('Content-Type', 'text/css; charset=utf-8');
+        } else if (filePath.endsWith('.js')) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        }
+    }
+}));
 
 // ================= CONEXIÓN A MONGODB =================
 mongoose.connect(process.env.MONGODB_URI, {
