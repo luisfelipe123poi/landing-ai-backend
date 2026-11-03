@@ -29,14 +29,18 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// ================= CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CORREGIDA) =================
+// ================= CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS (CORREGIDA Y OPTIMIZADA) =================
 const path = require('path');
 app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+    maxAge: '7d', // 👈 Define el tiempo de caché en el navegador (ej: 7 días o '1y' para producción)
+    immutable: true, // 👈 Evita peticiones condicionales innecesarias si el archivo no cambia
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.css')) {
             res.setHeader('Content-Type', 'text/css; charset=utf-8');
+            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
         } else if (filePath.endsWith('.js')) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
         }
     }
 }));
