@@ -663,7 +663,34 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
+                // Si la plantilla requiere pago, creamos la preferencia en Mercado Pago con back_urls actualizadas
+                const preferenceData = {
+                    body: {
+                        items: [{
+                            title: `Alquiler Plantilla Exclusiva Platinum: ${activeTemplateKey}`,
+                            quantity: 1,
+                            currency_id: 'COP',
+                            unit_price: 300000 
+                        }],
+                        payer: { email: user.email },
+                        back_urls: {
+                            success: `https://prestigecloser.com/?status=success&unlocked=${activeTemplateKey}`,
+                            failure: 'https://prestigecloser.com/?status=failure',
+                            pending: 'https://prestigecloser.com/?status=pending'
+                        },
+                        auto_return: 'approved',
+                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
+                        external_reference: `${user.email}|platinum_template_${activeTemplateKey}`
+                    }
+                };
+
+                const preference = new Preference(mpClient);
+                const result = await preference.create(preferenceData);
+                const initPoint = result.init_point || result.sandbox_init_point;
+
                 return res.status(403).json({ 
+                    requiresPayment: true,
+                    init_point: initPoint,
                     error: 'ACCESO_RESTRINGIDO_PAGO',
                     message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler antes de publicarla.' 
                 });
@@ -1048,9 +1075,9 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
                         }],
                         payer: { email: user.email },
                         back_urls: {
-                            success: `https://landinggen.prestigecloser.com/?status=success&unlocked=${finalTemplateKey}`,
-                            failure: 'https://landinggen.prestigecloser.com/?status=failure',
-                            pending: 'https://landinggen.prestigecloser.com/?status=pending'
+                            success: `https://prestigecloser.com/?status=success&unlocked=${finalTemplateKey}`,
+                            failure: 'https://prestigecloser.com/?status=failure',
+                            pending: 'https://prestigecloser.com/?status=pending'
                         },
                         auto_return: 'approved',
                         notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
