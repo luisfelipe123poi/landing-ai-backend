@@ -803,16 +803,17 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
 app.get('/', async (req, res) => {
     try {
-        const host = req.headers.host || ''; // Ej: barberia-luis.landinggen.prestigecloser.com o landinggen.prestigecloser.com
+        const host = req.headers.host || ''; // Ej: ase.landinggen.prestigecloser.com
         const parts = host.split('.');
 
-        // Detectar si el usuario está accediendo mediante un subdominio de marca (ej. "barberia-luis")
-        const isSubdomain = parts.length > 3 || (parts.length === 3 && parts[0] !== 'www');
+        // Tu dominio base tiene 3 partes (ej: prestigecloser.com). 
+        // Si tiene más de 3 partes, significa que hay un subdominio enfrente (ej: ase.landinggen.prestigecloser.com -> 4 partes)
+        const isSubdomain = parts.length > 3;
 
         if (isSubdomain) {
-            const subdominioBuscado = parts[0].toLowerCase(); // Extrae "barberia-luis"
+            const subdominioBuscado = parts[0].toLowerCase(); // Extrae "ase"
 
-            // 🛠️ BÚSQUEDA DUAL ROBUSTA: Busca tanto por 'slug' como por 'subdomain' para evitar errores en iframes
+            // 🛠️ BÚSQUEDA DUAL ROBUSTA: Busca tanto por 'slug' como por 'subdomain'
             const landingData = await Landing.findOne({
                 $or: [
                     { slug: subdominioBuscado },
@@ -826,8 +827,9 @@ app.get('/', async (req, res) => {
                     <html lang="es">
                     <head>
                         <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Página no encontrada</title>
-                        <script src="https://cdn.tailwindcss.com"></script>
+                        <link rel="stylesheet" href="/dist/output.css">
                     </head>
                     <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
                         <div class="text-center space-y-3">
@@ -874,9 +876,10 @@ app.get('/', async (req, res) => {
                         <html lang="es">
                         <head>
                             <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
                             <title>Suscripción Vencida - Servicio Suspendido</title>
-                            <script src="https://cdn.tailwindcss.com"></script>
-                            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                            <link rel="stylesheet" href="/dist/output.css">
+                            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
                         </head>
                         <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
                             <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
@@ -927,9 +930,10 @@ app.get('/', async (req, res) => {
                             <html lang="es">
                             <head>
                                 <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
                                 <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
-                                <script src="https://cdn.tailwindcss.com"></script>
-                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+                                <link rel="stylesheet" href="/dist/output.css">
+                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
                             </head>
                             <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
                                 <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
@@ -958,12 +962,8 @@ app.get('/', async (req, res) => {
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
-                <script src="https://cdn.tailwindcss.com"></script>
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-                <style>
-                    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
-                    body { font-family: 'Plus Jakarta Sans', sans-serif; }
-                </style>
+                <link rel="stylesheet" href="/dist/output.css">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
             </head>
             <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
                 <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
