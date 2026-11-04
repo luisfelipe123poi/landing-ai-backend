@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
 // Definición de tu subdominio dedicado para las landings
-const MAIN_DOMAIN = 'landinggen.prestigecloser.com';
+const MAIN_DOMAIN = 'prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
 const mpClient = new MercadoPagoConfig({ 
@@ -801,12 +801,12 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
 app.get('/', async (req, res) => {
     try {
-        const host = req.headers.host || ''; // Ej: ase.landinggen.prestigecloser.com
+        const host = req.headers.host || ''; // Ej: ase.prestigecloser.com o prestigecloser.com
         const parts = host.split('.');
 
-        // Tu dominio base tiene 3 partes (ej: prestigecloser.com). 
-        // Si tiene más de 3 partes, significa que hay un subdominio enfrente (ej: ase.landinggen.prestigecloser.com -> 4 partes)
-        const isSubdomain = parts.length > 3;
+        // Con la Opción B, tu dominio base (prestigecloser.com) tiene 2 partes. 
+        // Si tiene exactamente 3 partes y la primera no es 'www' (ej: ase.prestigecloser.com), es un subdominio válido.
+        const isSubdomain = parts.length === 3 && parts[0] !== 'www';
 
         if (isSubdomain) {
             const subdominioBuscado = parts[0].toLowerCase(); // Extrae "ase"
@@ -861,7 +861,7 @@ app.get('/', async (req, res) => {
                                     <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
                                     <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
                                     <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
-                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
+                                    <a href="https://prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
                                 </div>
                             `
                         });
@@ -915,7 +915,7 @@ app.get('/', async (req, res) => {
                                         <h2 style="color: #ef4444; margin-top: 0;">Plantilla Exclusiva Fuera de Servicio</h2>
                                         <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> ha expirado sin renovación, por lo que el sitio web asociado se encuentra temporalmente suspendido.</p>
                                         <p style="color: #94a3b8; line-height: 1.5;">Renueva tu alquiler exclusivo en tu panel de control para restaurar el acceso público inmediatamente.</p>
-                                        <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
+                                        <a href="https://prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
                                     </div>
                                 `
                             });
@@ -951,7 +951,7 @@ app.get('/', async (req, res) => {
             return res.send(landingData.htmlContent);
         }
 
-        // Si entran a la raíz principal (landinggen.prestigecloser.com) sin subdominio -> Portada profesional del SaaS
+        // Si entran a la raíz principal (prestigecloser.com) sin subdominio -> Portada profesional del SaaS
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         return res.send(`
             <!DOCTYPE html>
