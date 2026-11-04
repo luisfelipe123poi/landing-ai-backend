@@ -31,15 +31,13 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 const path = require('path');
 
-// Esto le dice a Express que busque la carpeta 'assets' en la raíz del proyecto
-app.use('/assets', express.static(path.join(__dirname, 'assets'), {
+// Esto le dice a Express que sirva tu CSS compilado localmente desde la carpeta dist
+app.use('/dist', express.static(path.join(__dirname, 'dist'), {
     maxAge: '7d',
     immutable: true,
     setHeaders: (res, filePath) => {
         if (filePath.endsWith('.css')) {
             res.setHeader('Content-Type', 'text/css; charset=utf-8');
-        } else if (filePath.endsWith('.js')) {
-            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
         }
     }
 }));
