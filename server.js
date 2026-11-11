@@ -826,14 +826,16 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
-app.get('/', async (req, res) => {
+app.get('*', async (req, res) => {
     try {
-        const host = req.headers.host || ''; // Ej: ase.prestigecloser.com o prestigecloser.com
+        const host = req.headers.host || ''; // Ej: ase.prestigecloser.com, prestigecloser.com o landing-ai-backend.onrender.com
         const parts = host.split('.');
 
-        // Con la Opción B, tu dominio base (prestigecloser.com) tiene 2 partes. 
-        // Si tiene exactamente 3 partes y la primera no es 'www' (ej: ase.prestigecloser.com), es un subdominio válido.
-        const isSubdomain = parts.length === 3 && parts[0] !== 'www';
+        // 🛠️ EXCLUIR RENDER Y DOMINIOS PROPIOS DEL BACKEND DE LOS SUBDOMINIOS DE CLIENTES
+        const isBackendDomain = host.includes('onrender.com') || host === 'landing-ai-backend.onrender.com';
+
+        // Solo es un subdominio de landing si NO es el backend de render, cumple con 3 partes y no es 'www'
+        const isSubdomain = !isBackendDomain && parts.length === 3 && parts[0] !== 'www';
 
         if (isSubdomain) {
             const subdominioBuscado = parts[0].toLowerCase(); // Extrae "ase"
@@ -978,6 +980,27 @@ app.get('/', async (req, res) => {
             return res.send(landingData.htmlContent);
         }
 
+        // Si entran al backend de Render directamente (ej. landing-ai-backend.onrender.com)
+        if (isBackendDomain) {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(`
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>LandingGen Backend Activo 🚀</title>
+                    <script src="https://cdn.tailwindcss.com"></script>
+                </head>
+                <body class="bg-slate-950 text-white flex items-center justify-center h-screen text-center">
+                    <div class="p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
+                        <h1 class="text-2xl font-bold text-emerald-400 mb-2">¡El Servidor Backend está en línea! 🟢</h1>
+                        <p class="text-slate-400 text-sm">Las APIs y webhooks operan con normalidad.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
         // Si entran a la raíz principal (prestigecloser.com) sin subdominio -> Portada profesional del SaaS
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         return res.send(`
@@ -1007,7 +1030,6 @@ app.get('/', async (req, res) => {
         res.status(500).send('Error interno del servidor');
     }
 });
-
 app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     try {
         const userEmail = (req.user?.email || "").trim().toLowerCase();
