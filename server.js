@@ -930,6 +930,40 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
+// ================= ENDPOINT PARA RESOLVER SUBDOMINIOS EN CLOUDFLARE =================
+app.get('/api/resolve-subdomain/:slug', async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const cleanSlug = (slug || '').toLowerCase().trim();
+
+        // Buscar la landing en la base de datos por slug o subdomain
+        const landingData = await Landing.findOne({
+            $or: [
+                { slug: cleanSlug },
+                { subdomain: cleanSlug }
+            ]
+        });
+
+        if (!landingData || !landingData.htmlContent) {
+            return res.status(404).json({ error: 'Landing no encontrada' });
+        }
+
+        // Opcional: Validar si el dueño tiene el plan vencido antes de servir
+        const owner = await User.findOne({ email: landingData.userEmail });
+        if (owner && owner.planExpiresAt && new Date(owner.planExpiresAt) < new Date() && owner.plan !== 'free') {
+            return res.status(403).json({ error: 'Sitio suspendido por suscripción vencida' });
+        }
+
+        // Devolver el HTML limpio para que el Worker lo pinte
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(landingData.htmlContent);
+
+    } catch (error) {
+        console.error('Error resolviendo subdominio:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS (MEDIANTE MIDDLEWARE GLOBAL) =================
 app.use(async (req, res, next) => {
     try {
