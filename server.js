@@ -826,7 +826,7 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 });
 
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
-app.get('/*', async (req, res) => {
+app.all('*', async (req, res) => {
     try {
         const host = req.headers.host || ''; // Ej: ase.prestigecloser.com, prestigecloser.com o landing-ai-backend.onrender.com
         const parts = host.split('.');
