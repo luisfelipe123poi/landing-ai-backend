@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu dominio base limpio para los subdominios (primer nivel: slu.prestigecloser.com)
+// Definición de tu dominio base limpio para los subdominios
 const MAIN_DOMAIN = 'prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
@@ -568,7 +568,7 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const finalSubdomain = subdomain || landingId; 
         
-        // 🛠️ URL limpia de primer nivel (https://slu.prestigecloser.com)
+        // 🛠️ URL limpia de primer nivel (https://slug.prestigecloser.com)
         const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
         
         const newLanding = new Landing({
@@ -677,7 +677,7 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         
-        // 🛠️ URL limpia de primer nivel (https://slu.prestigecloser.com)
+        // 🛠️ URL limpia de primer nivel (https://slug.prestigecloser.com)
         const landingUrl = `https://${cleanSlug}.${MAIN_DOMAIN}`;
         
         const newLanding = new Landing({
@@ -778,134 +778,128 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= RUTA INTELIGENTE PARA SUBDOMINIOS DE PRIMER NIVEL =================
-app.get('/', async (req, res) => {
+// ================= RUTA PARA EL PROXY DE SUBDOMINIOS DESDE EL CLOUDFLARE WORKER =================
+app.get('/public-landing/:slug', async (req, res) => {
     try {
-        const host = req.headers.host || ''; // Ej: slu.prestigecloser.com o prestigecloser.com
-        const parts = host.split('.');
+        const subdominioBuscado = (req.params.slug || '').toLowerCase().trim();
 
-        // Si tiene exactamente 3 partes y no es 'www', es un subdominio válido de primer nivel
-        const isSubdomain = parts.length === 3 && parts[0] !== 'www';
+        const landingData = await Landing.findOne({
+            $or: [
+                { slug: subdominioBuscado },
+                { subdomain: subdominioBuscado }
+            ]
+        });
 
-        if (isSubdomain) {
-            const subdominioBuscado = parts[0].toLowerCase(); 
+        if (!landingData || !landingData.htmlContent) {
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html lang="es">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>Página no encontrada</title>
+                    <link rel="stylesheet" href="/dist/output.css">
+                </head>
+                <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
+                    <div class="text-center space-y-3">
+                        <h1 class="text-4xl font-bold text-indigo-500">404</h1>
+                        <p class="text-slate-400">La página web que buscas no existe o el subdominio está inactivo.</p>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
 
-            const landingData = await Landing.findOne({
-                $or: [
-                    { slug: subdominioBuscado },
-                    { subdomain: subdominioBuscado }
-                ]
-            });
+        const owner = await User.findOne({ email: landingData.userEmail });
 
-            if (!landingData || !landingData.htmlContent) {
-                return res.status(404).send(`
+        if (owner) {
+            const now = new Date();
+            const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
+
+            if (planVencido && owner.plan !== 'free') {
+                return res.send(`
                     <!DOCTYPE html>
                     <html lang="es">
                     <head>
                         <meta charset="UTF-8">
                         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Página no encontrada</title>
+                        <title>Suscripción Vencida - Servicio Suspendido</title>
                         <link rel="stylesheet" href="/dist/output.css">
                     </head>
-                    <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
-                        <div class="text-center space-y-3">
-                            <h1 class="text-4xl font-bold text-indigo-500">404</h1>
-                            <p class="text-slate-400">La página web que buscas no existe o el subdominio está inactivo.</p>
+                    <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                        <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
+                            <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
+                            <p class="text-gray-400 text-sm mb-6">El sitio se encuentra suspendido temporalmente por falta de renovación del plan general.</p>
                         </div>
                     </body>
                     </html>
                 `);
             }
 
-            const owner = await User.findOne({ email: landingData.userEmail });
+            const templateKey = landingData.templateKey;
+            if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
+                const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
+                const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function'
+                    ? owner.subscriptions.get(templateKey)
+                    : owner?.subscriptions?.[templateKey];
 
-            if (owner) {
-                const now = new Date();
-                const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
+                const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
 
-                if (planVencido && owner.plan !== 'free') {
+                if (!hasUnlocked || isExpired) {
                     return res.send(`
                         <!DOCTYPE html>
                         <html lang="es">
                         <head>
                             <meta charset="UTF-8">
                             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>Suscripción Vencida - Servicio Suspendido</title>
+                            <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
                             <link rel="stylesheet" href="/dist/output.css">
                         </head>
                         <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                            <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
-                                <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
-                                <p class="text-gray-400 text-sm mb-6">El sitio se encuentra suspendido temporalmente por falta de renovación del plan general.</p>
+                            <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
+                                <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
+                                <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado.</p>
                             </div>
                         </body>
                         </html>
                     `);
                 }
-
-                const templateKey = landingData.templateKey;
-                if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
-                    const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
-                    const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function'
-                        ? owner.subscriptions.get(templateKey)
-                        : owner?.subscriptions?.[templateKey];
-
-                    const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
-
-                    if (!hasUnlocked || isExpired) {
-                        return res.send(`
-                            <!DOCTYPE html>
-                            <html lang="es">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
-                                <link rel="stylesheet" href="/dist/output.css">
-                            </head>
-                            <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                                <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
-                                    <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
-                                    <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado.</p>
-                                </div>
-                            </body>
-                            </html>
-                        `);
-                    }
-                }
             }
-
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            return res.send(landingData.htmlContent);
         }
 
-        // Raíz principal (prestigecloser.com)
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.send(`
-            <!DOCTYPE html>
-            <html lang="es" class="scroll-smooth">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
-                <link rel="stylesheet" href="/dist/output.css">
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-            </head>
-            <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
-                <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
-                    <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
-                        <i class="fa-solid fa-rocket"></i>
-                    </div>
-                    <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
-                    <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
-                </div>
-            </body>
-            </html>
-        `);
+        return res.send(landingData.htmlContent);
 
     } catch (error) {
-        console.error('Error interno del servidor al procesar el subdominio:', error);
+        console.error('Error interno al servir la landing pública:', error);
         res.status(500).send('Error interno del servidor');
     }
+});
+
+// ================= RUTA RAÍZ PRINCIPAL =================
+app.get('/', async (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(`
+        <!DOCTYPE html>
+        <html lang="es" class="scroll-smooth">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
+            <link rel="stylesheet" href="/dist/output.css">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+        </head>
+        <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
+            <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
+                <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
+                    <i class="fa-solid fa-rocket"></i>
+                </div>
+                <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
+                <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
+            </div>
+        </body>
+        </html>
+    `);
 });
 
 app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
