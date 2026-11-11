@@ -572,8 +572,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
 // ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
 
-// ================= ENDPOINTS DE GENERACIÓN Y GESTIÓN =================
-
 app.post('/api/generate', verifyToken, async (req, res) => {
     try {
         const { templateName, business, tagline, description, whatsapp } = req.body;
@@ -825,6 +823,113 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
+app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
+    try {
+        const userEmail = (req.user?.email || "").trim().toLowerCase();
+        const user = await User.findOne({ email: userEmail });
+
+        if (!user) {
+            return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
+        }
+
+        const isPlatinum = user.plan === 'agency_platinum';
+
+        if (!isPlatinum) {
+            return res.status(403).json({ 
+                authorized: false, 
+                error: "Se requiere el Plan Agencia Platinum para acceder a esta sección." 
+            });
+        }
+
+        return res.json({ 
+            authorized: true, 
+            plan: user.plan,
+            unlockedTemplates: user.unlockedPlatinumTemplates || []
+        });
+
+    } catch (error) {
+        console.error("Error verificando acceso Platinum en backend:", error);
+        return res.status(500).json({ authorized: false, error: "Error interno del servidor" });
+    }
+});
+
+// =========================================================================
+// 2. ENDPOINT DE ACTUALIZACIÓN (PUT) POR SI EL EDITOR USA ESTA RUTA AL GUARDAR
+// =========================================================================
+app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
+    try {
+        const { landingId } = req.params;
+        const { business, htmlContent, templateKey } = req.body;
+        const userEmail = req.user.email;
+
+        let user = await User.findOne({ email: userEmail });
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        const existingLanding = await Landing.findOne({ landingId, userEmail });
+        const finalTemplateKey = templateKey || existingLanding?.templateKey || 'cafe';
+
+        if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(finalTemplateKey)) {
+            const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(finalTemplateKey);
+            
+            // Verificar si la suscripción de 30 días ya expiró
+            const subData = user.subscriptions && typeof user.subscriptions.get === 'function' 
+                ? user.subscriptions.get(finalTemplateKey) 
+                : user?.subscriptions?.[finalTemplateKey];
+            
+            const now = new Date();
+            const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+
+            if (!hasUnlocked || isExpired) {
+                const preferenceData = {
+                    body: {
+                        items: [{
+                            title: `Renovación / Alquiler Plantilla Exclusiva: ${finalTemplateKey}`,
+                            quantity: 1,
+                            currency_id: 'COP',
+                            unit_price: 300000 
+                        }],
+                        payer: { email: user.email },
+                        back_urls: {
+                            success: `https://prestigecloser.com/?status=success&unlocked=${finalTemplateKey}`,
+                            failure: 'https://prestigecloser.com/?status=failure',
+                            pending: 'https://prestigecloser.com/?status=pending'
+                        },
+                        auto_return: 'approved',
+                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
+                        external_reference: `${user.email}|platinum_template_${finalTemplateKey}`
+                    }
+                };
+
+                const preference = new Preference(mpClient);
+                const result = await preference.create(preferenceData);
+                const initPoint = result.init_point || result.sandbox_init_point;
+
+                return res.status(403).json({
+                    requiresPayment: true,
+                    init_point: initPoint,
+                    error: 'ACCESO_RESTRINGIDO_PAGO',
+                    message: 'Las plantillas Platinum requieren una suscripción vigente mes a mes para su publicación.'
+                });
+            }
+        }
+
+        const updatedLanding = await Landing.findOneAndUpdate(
+            { landingId, userEmail },
+            { business: business || 'Mi Negocio', htmlContent, templateKey: finalTemplateKey },
+            { new: true }
+        );
+
+        if (!updatedLanding) {
+            return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
+        }
+
+        res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
+    } catch (error) {
+        console.error('Error en PUT /api/landings/:landingId:', error);
+        res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
+    }
+});
+
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
 app.all('*', async (req, res) => {
     try {
@@ -888,7 +993,7 @@ app.all('*', async (req, res) => {
                             htmlContent: `
                                 <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
                                     <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
                                     <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
                                     <a href="https://prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
                                 </div>
@@ -1030,114 +1135,6 @@ app.all('*', async (req, res) => {
         res.status(500).send('Error interno del servidor');
     }
 });
-app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
-    try {
-        const userEmail = (req.user?.email || "").trim().toLowerCase();
-        const user = await User.findOne({ email: userEmail });
-
-        if (!user) {
-            return res.status(404).json({ authorized: false, error: "Usuario no encontrado" });
-        }
-
-        const isPlatinum = user.plan === 'agency_platinum';
-
-        if (!isPlatinum) {
-            return res.status(403).json({ 
-                authorized: false, 
-                error: "Se requiere el Plan Agencia Platinum para acceder a esta sección." 
-            });
-        }
-
-        return res.json({ 
-            authorized: true, 
-            plan: user.plan,
-            unlockedTemplates: user.unlockedPlatinumTemplates || []
-        });
-
-    } catch (error) {
-        console.error("Error verificando acceso Platinum en backend:", error);
-        return res.status(500).json({ authorized: false, error: "Error interno del servidor" });
-    }
-});
-
-// =========================================================================
-// 2. ENDPOINT DE ACTUALIZACIÓN (PUT) POR SI EL EDITOR USA ESTA RUTA AL GUARDAR
-// =========================================================================
-app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
-    try {
-        const { landingId } = req.params;
-        const { business, htmlContent, templateKey } = req.body;
-        const userEmail = req.user.email;
-
-        let user = await User.findOne({ email: userEmail });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-        const existingLanding = await Landing.findOne({ landingId, userEmail });
-        const finalTemplateKey = templateKey || existingLanding?.templateKey || 'cafe';
-
-        if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(finalTemplateKey)) {
-            const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(finalTemplateKey);
-            
-            // Verificar si la suscripción de 30 días ya expiró
-            const subData = user.subscriptions && typeof user.subscriptions.get === 'function' 
-                ? user.subscriptions.get(finalTemplateKey) 
-                : user?.subscriptions?.[finalTemplateKey];
-            
-            const now = new Date();
-            const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
-
-            if (!hasUnlocked || isExpired) {
-                const preferenceData = {
-                    body: {
-                        items: [{
-                            title: `Renovación / Alquiler Plantilla Exclusiva: ${finalTemplateKey}`,
-                            quantity: 1,
-                            currency_id: 'COP',
-                            unit_price: 300000 
-                        }],
-                        payer: { email: user.email },
-                        back_urls: {
-                            success: `https://prestigecloser.com/?status=success&unlocked=${finalTemplateKey}`,
-                            failure: 'https://prestigecloser.com/?status=failure',
-                            pending: 'https://prestigecloser.com/?status=pending'
-                        },
-                        auto_return: 'approved',
-                        notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
-                        external_reference: `${user.email}|platinum_template_${finalTemplateKey}`
-                    }
-                };
-
-                const preference = new Preference(mpClient);
-                const result = await preference.create(preferenceData);
-                const initPoint = result.init_point || result.sandbox_init_point;
-
-                return res.status(403).json({
-                    requiresPayment: true,
-                    init_point: initPoint,
-                    error: 'ACCESO_RESTRINGIDO_PAGO',
-                    message: 'Las plantillas Platinum requieren una suscripción vigente mes a mes para su publicación.'
-                });
-            }
-        }
-
-        const updatedLanding = await Landing.findOneAndUpdate(
-            { landingId, userEmail },
-            { business: business || 'Mi Negocio', htmlContent, templateKey: finalTemplateKey },
-            { new: true }
-        );
-
-        if (!updatedLanding) {
-            return res.status(404).json({ error: 'Landing no encontrada o no autorizada' });
-        }
-
-        res.json({ success: true, message: 'Landing actualizada correctamente', landingId });
-    } catch (error) {
-        console.error('Error en PUT /api/landings/:landingId:', error);
-        res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
-    }
-});
-
-
 
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
