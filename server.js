@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu dominio base para los subdominios
+// Definición de tu dominio base limpio para los subdominios (primer nivel: slu.prestigecloser.com)
 const MAIN_DOMAIN = 'prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
@@ -567,6 +567,8 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             .replace(/^-|-$/g, ''); 
 
         const finalSubdomain = subdomain || landingId; 
+        
+        // 🛠️ URL limpia de primer nivel (https://slu.prestigecloser.com)
         const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
         
         const newLanding = new Landing({
@@ -674,6 +676,8 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         }
 
         const landingId = Math.random().toString(36).substring(2, 9);
+        
+        // 🛠️ URL limpia de primer nivel (https://slu.prestigecloser.com)
         const landingUrl = `https://${cleanSlug}.${MAIN_DOMAIN}`;
         
         const newLanding = new Landing({
@@ -777,7 +781,7 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS DE PRIMER NIVEL =================
 app.get('/', async (req, res) => {
     try {
-        const host = req.headers.host || ''; // Ej: slugg.prestigecloser.com o prestigecloser.com
+        const host = req.headers.host || ''; // Ej: slu.prestigecloser.com o prestigecloser.com
         const parts = host.split('.');
 
         // Si tiene exactamente 3 partes y no es 'www', es un subdominio válido de primer nivel
