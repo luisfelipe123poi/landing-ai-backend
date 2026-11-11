@@ -933,18 +933,29 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
 // ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS (MEDIANTE MIDDLEWARE GLOBAL) =================
 app.use(async (req, res, next) => {
     try {
-        const host = req.headers.host || ''; // Ej: ase.prestigecloser.com, prestigecloser.com o landing-ai-backend.onrender.com
+        const host = req.headers.host || ''; // Ej: 123.landinggen.prestigecloser.com, ase.prestigecloser.com o landing-ai-backend.onrender.com
         const parts = host.split('.');
 
         // 🛠️ EXCLUIR RENDER Y DOMINIOS PROPIOS DEL BACKEND DE LOS SUBDOMINIOS DE CLIENTES
         const isBackendDomain = host.includes('onrender.com') || host === 'landing-ai-backend.onrender.com';
 
-        // Solo es un subdominio de landing si NO es el backend de render, cumple con 3 partes y no es 'www'
-        const isSubdomain = !isBackendDomain && parts.length === 3 && parts[0] !== 'www';
+        // 🛠️ DETECCIÓN FLEXIBLE DE SUBDOMINIO (Soporta tanto cliente.prestigecloser.com como cliente.landinggen.prestigecloser.com)
+        let subdominioBuscado = '';
+        
+        if (!isBackendDomain && parts.length >= 3) {
+            // Si el host incluye 'landinggen.' (ej: 123.landinggen.prestigecloser.com), el slug es la primera parte
+            if (host.includes('landinggen.')) {
+                subdominioBuscado = parts[0].toLowerCase();
+            } 
+            // Si es un subdominio directo clásico de 3 partes (ej: ase.prestigecloser.com) y no es 'www'
+            else if (parts.length === 3 && parts[0] !== 'www') {
+                subdominioBuscado = parts[0].toLowerCase();
+            }
+        }
+
+        const isSubdomain = Boolean(subdominioBuscado);
 
         if (isSubdomain) {
-            const subdominioBuscado = parts[0].toLowerCase(); // Extrae "ase"
-
             // 🛠️ BÚSQUEDA DUAL ROBUSTA: Busca tanto por 'slug' como por 'subdomain'
             const landingData = await Landing.findOne({
                 $or: [
@@ -966,7 +977,7 @@ app.use(async (req, res, next) => {
                     <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
                         <div class="text-center space-y-3">
                             <h1 class="text-4xl font-bold text-indigo-500">404</h1>
-                            <p class="text-slate-400">La página web que buscas no existe o el subdominio está inactivo.</p>
+                            <p class="text-slate-400">La página web para el subdominio "${subdominioBuscado}" no existe o el subdominio está inactivo.</p>
                         </div>
                     </body>
                     </html>
