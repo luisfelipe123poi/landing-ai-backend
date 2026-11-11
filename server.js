@@ -11,7 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu subdominio dedicado para las landings
+// Definición de tu dominio base para los subdominios
 const MAIN_DOMAIN = 'prestigecloser.com';
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
@@ -55,8 +55,9 @@ const landingSchema = new mongoose.Schema({
     landingId: { type: String, required: true, unique: true },
     userEmail: { type: String, required: true },
     business: { type: String },
-    templateKey: { type: String }, // <--- Almacena la plantilla exacta
-    slug: { type: String, required: true, unique: true, index: true }, // <--- NUEVO: Subdominio único para el enlace personalizado
+    templateKey: { type: String }, 
+    slug: { type: String, required: true, unique: true, index: true }, 
+    subdomain: { type: String, index: true },
     htmlContent: { type: String, required: true },
     createdAt: { type: Date, default: Date.now }
 });
@@ -66,18 +67,18 @@ const userSchema = new mongoose.Schema({
     passwordHash: { type: String, required: true },
     plan: { type: String, default: 'free' },
     tokens: { type: Number, default: 200 },
-    planExpiresAt: { type: Date, default: null }, // <--- Fecha de expiración del plan general (Pro / Agencia Platinum)
+    planExpiresAt: { type: Date, default: null }, 
     landings: [{
         landingId: String,
         business: String,
-        templateKey: String, // <--- Acceso rápido a la plantilla en el panel
-        slug: String,        // <--- NUEVO: Para acceso rápido y precarga al editar
+        templateKey: String, 
+        slug: String,        
         url: String,
         createdAt: String
     }],
     unlockedPlatinumTemplates: { type: [String], default: [] },
     activeExclusiveRentals: [String],
-    subscriptions: { type: Map, of: Object, default: {} } // <--- Almacena vigencia y estado de plantillas Platinum individuales (expiresAt)
+    subscriptions: { type: Map, of: Object, default: {} } 
 });
 
 const Landing = mongoose.model('Landing', landingSchema);
@@ -88,7 +89,6 @@ function esPlantillaPlatinum(templateKey) {
     const key = templateKey.toLowerCase();
     return key.startsWith('platinum_') || key.startsWith('platinum-') || key.includes('platinum');
 }
-
 
 // ================= SERVICIO DE CORREOS BREVO =================
 async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
@@ -123,13 +123,12 @@ async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
     }
 }
 
-// Función auxiliar para definir tokens iniciales según el plan
 function getTokensForPlan(plan) {
     switch (plan) {
         case 'starter': return 3;
         case 'pro':
         case 'business':
-        case 'agency_platinum': return 999999; // Ilimitados
+        case 'agency_platinum': return 999999; 
         case 'free':
         default: return 200;
     }
@@ -218,11 +217,9 @@ function verifyToken(req, res, next) {
 }
 
 app.use((req, res, next) => {
-    // Permitir que los recursos de terceros (Tailwind, FontAwesome, Fuentes) carguen sin bloqueos CSP
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    // Relajar políticas de seguridad de contenido para evitar bloqueos de scripts en subdominios
     res.setHeader(
         "Content-Security-Policy",
         "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:;"
@@ -256,7 +253,6 @@ app.post('/api/register', async (req, res) => {
 
         await newUser.save();
 
-        // 🚀 ENVÍO DE CORREO DE BIENVENIDA VÍA BREVO (DIRECTO)
         try {
             await enviarCorreoBrevo({
                 toEmail: cleanEmail,
@@ -266,7 +262,7 @@ app.post('/api/register', async (req, res) => {
                     <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
                         <h2 style="color: #818cf8; margin-top: 0;">¡Hola! Tu cuenta Free ha sido creada con éxito</h2>
                         <p style="color: #94a3b8; line-height: 1.5;">Ya puedes empezar a crear y explorar tus primeras landing pages profesionales en LandingGen y conectar tu WhatsApp en segundos.</p>
-                        <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                        <a href="https://prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
                     </div>
                 `
             });
@@ -309,9 +305,6 @@ app.post('/api/login', async (req, res) => {
 const axios = require('axios');
 
 app.post('/api/create-preference', verifyToken, async (req, res) => {
-    console.log("--- RECIBIDA PETICIÓN /api/create-preference (TRM Dinámica) ---");
-    console.log("Body recibido:", req.body);
-
     try {
         const { planName, email } = req.body;
         
@@ -322,7 +315,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const planRaw = (planName || "pro").toLowerCase().trim();
 
-        // Estructura oficial de precios y límites de páginas (tokens) exactos
         const preciosUSD = {
             "pro": { nombre: "Plan Pro Negocios", precioUSD: 10, tokens: 5 },
             "agency_platinum": { nombre: "Plan Agencia Platinum", precioUSD: 25, tokens: 10 }
@@ -331,13 +323,11 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         let infoPlan;
         let planId = planRaw;
 
-        // Validar si es una compra de Plantilla Exclusiva Platinum (soporta 'platinum_template_' o 'platinum_')
         if (planRaw.startsWith('platinum_template_') || planRaw.startsWith('platinum_')) {
             const templateKey = planRaw
                 .replace('platinum_template_', '')
                 .replace('platinum_', '');
             
-            // 1. VALIDACIÓN DE EXCLUSIVIDAD GLOBAL PREVIA (Backend Checkout)
             const alreadyTaken = await User.findOne({
                 email: { $ne: emailCliente },
                 unlockedPlatinumTemplates: templateKey
@@ -349,7 +339,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                 });
             }
 
-            // Verificar si el usuario actual ya la posee
             const currentUser = await User.findOne({ email: emailCliente });
             if (currentUser && currentUser.unlockedPlatinumTemplates && currentUser.unlockedPlatinumTemplates.includes(templateKey)) {
                 return res.status(400).json({ error: 'Ya tienes desbloqueada esta plantilla exclusiva.' });
@@ -357,11 +346,10 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
             infoPlan = {
                 nombre: `Alquiler Plantilla Platinum (${templateKey})`,
-                precioUSD: 25, // Fijo en 25 USD mensuales
+                precioUSD: 25,
                 tokens: 0 
             };
 
-            // Aseguramos que el planId enviado a external_reference mantenga el formato correcto para el webhook
             planId = `platinum_template_${templateKey}`;
         } else if (preciosUSD[planRaw]) {
             infoPlan = preciosUSD[planRaw];
@@ -382,8 +370,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
 
         const precioEnMonedaLocal = Math.round(infoPlan.precioUSD * tasaCambio);
 
-        console.log(`Conversión aplicada -> USD: $${infoPlan.precioUSD} | Tasa TRM: ${tasaCambio} | Total COP: $${precioEnMonedaLocal}`);
-
         const preferenceData = {
             body: {
                 items: [
@@ -396,9 +382,9 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
                 ],
                 payer: { email: emailCliente },
                 back_urls: {
-                    success: 'https://landinggen.prestigecloser.com/?status=success',
-                    failure: 'https://landinggen.prestigecloser.com/?status=failure',
-                    pending: 'https://landinggen.prestigecloser.com/?status=pending'
+                    success: 'https://prestigecloser.com/?status=success',
+                    failure: 'https://prestigecloser.com/?status=failure',
+                    pending: 'https://prestigecloser.com/?status=pending'
                 },
                 auto_return: 'approved',
                 notification_url: 'https://landing-ai-backend.onrender.com/api/webhook-mercadopago',
@@ -413,7 +399,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
         const initPoint = result.init_point || result.sandbox_init_point;
         
         if (!initPoint) {
-            console.error("Error MercadoPago Response:", result);
             return res.status(400).json({ error: "Mercado Pago rechazó la preferencia." });
         }
 
@@ -429,9 +414,6 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
     }
 });
 
-// =========================================================================
-// Webhook de Mercado Pago (Actualizado con control de vigencia y correos Brevo)
-// =========================================================================
 app.post('/api/webhook-mercadopago', async (req, res) => {
     try {
         const body = req.body;
@@ -464,29 +446,22 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                         
                         const user = await User.findOne({ email: payerEmail });
                         if (user) {
-                            // Verificamos si el pago corresponde a una plantilla Platinum (soporta ambos prefijos)
                             const isPlatinumPayment = planDesdeRef.startsWith('platinum_template_') || planDesdeRef.startsWith('platinum_');
 
                             if (isPlatinumPayment) {
-                                // Extraer la clave limpia de la plantilla sin importar el prefijo
                                 const templateKey = planDesdeRef
                                     .replace('platinum_template_', '')
                                     .replace('platinum_', '');
                             
-                                // VALIDACIÓN DE EXCLUSIVIDAD GLOBAL EN MONGODB:
                                 const alreadyClaimed = await User.findOne({
                                     _id: { $ne: user._id },
                                     unlockedPlatinumTemplates: templateKey
                                 });
 
-                                if (alreadyClaimed) {
-                                    console.warn(`[EXCLUSIVIDAD VIOLADA] La plantilla ${templateKey} ya fue alquilada previamente por otro usuario (${alreadyClaimed.email}). No se asignó a ${payerEmail}.`);
-                                } else {
-                                    // Calcular fecha de expiración exacta (30 días de vigencia)
+                                if (!alreadyClaimed) {
                                     const expirationDate = new Date();
                                     expirationDate.setDate(expirationDate.getDate() + 30);
 
-                                    // Aseguramos que existan los objetos en el esquema si no están inicializados
                                     if (!user.unlockedPlatinumTemplates) user.unlockedPlatinumTemplates = [];
                                     if (!user.subscriptions) user.subscriptions = {};
 
@@ -494,7 +469,6 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                         user.unlockedPlatinumTemplates.push(templateKey);
                                     }
 
-                                    // Guardamos o renovamos la vigencia de los 30 días para esta plantilla
                                     if (typeof user.subscriptions.set === 'function') {
                                         user.subscriptions.set(templateKey, { active: true, expiresAt: expirationDate });
                                     } else {
@@ -502,11 +476,8 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                     }
 
                                     await user.save();
-                                    console.log(`Plantilla Platinum exclusiva (${templateKey}) asignada y con vigencia hasta ${expirationDate.toISOString()} para ${payerEmail}.`);
 
-                                    // 🚀 ENVÍO DE CORREO BREVO (ALQUILER PLATINUM EXITOSO)
                                     try {
-                                        const { enviarCorreoBrevo } = require('./services/brevoService');
                                         await enviarCorreoBrevo({
                                             toEmail: payerEmail,
                                             toName: payerEmail.split('@')[0],
@@ -515,8 +486,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                                 <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
                                                     <h2 style="color: #818cf8; margin-top: 0;">¡Alquiler Platinum Confirmado!</h2>
                                                     <p style="color: #94a3b8; line-height: 1.5;">Has adquirido con éxito el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> por los próximos 30 días.</p>
-                                                    <p style="color: #94a3b8; line-height: 1.5;">Tu vigencia y acceso exclusivo están activos hasta: <strong style="color: #ffffff;">${expirationDate.toLocaleDateString()}</strong>.</p>
-                                                    <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                                                    <a href="https://prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
                                                 </div>
                                             `
                                         });
@@ -525,21 +495,16 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                     }
                                 }
                             } else {
-                                // Asignación unificada de plan y tokens para planes normales (Pro / Agency Platinum)
                                 user.plan = planDesdeRef;
                                 user.tokens = getTokensForPlan(planDesdeRef);
                                 
-                                // Calcular y actualizar la vigencia de 30 días para el plan general
                                 const planExpirationDate = new Date();
                                 planExpirationDate.setDate(planExpirationDate.getDate() + 30);
                                 user.planExpiresAt = planExpirationDate;
 
                                 await user.save();
-                                console.log(`Licencia de ${payerEmail} actualizada por pago exitoso. Plan: ${planDesdeRef}, Páginas asignadas: ${user.tokens}, Vence: ${planExpirationDate.toISOString()}.`);
 
-                                // 🚀 ENVÍO DE CORREO BREVO (PLAN GENERAL EXITOSO)
                                 try {
-                                    const { enviarCorreoBrevo } = require('./services/brevoService');
                                     await enviarCorreoBrevo({
                                         toEmail: payerEmail,
                                         toName: payerEmail.split('@')[0],
@@ -548,8 +513,7 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                             <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
                                                 <h2 style="color: #818cf8; margin-top: 0;">¡Pago de Suscripción Aprobado!</h2>
                                                 <p style="color: #94a3b8; line-height: 1.5;">Tu cuenta ha sido actualizada al plan <strong>${planDesdeRef.toUpperCase()}</strong> con éxito.</p>
-                                                <p style="color: #94a3b8; line-height: 1.5;">Tus beneficios y plan general están activos hasta: <strong style="color: #ffffff;">${planExpirationDate.toLocaleDateString()}</strong>.</p>
-                                                <a href="https://landinggen.prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
+                                                <a href="https://prestigecloser.com" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
                                             </div>
                                         `
                                     });
@@ -595,31 +559,20 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
         const landingId = Math.random().toString(36).substring(2, 9);
         
-        // 🚀 CONVERSIÓN A SUBDOMINIO / SLUG LIMPIO
         const rawBusiness = business || 'negocio';
         const subdomain = rawBusiness.toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remueve tildes
-            .replace(/[^a-z0-9-_]/g, '-') // Cambia espacios y símbolos por guiones
-            .replace(/-+/g, '-') // Evita guiones múltiples
-            .replace(/^-|-$/g, ''); // Limpia guiones al inicio o final
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "") 
+            .replace(/[^a-z0-9-_]/g, '-') 
+            .replace(/-+/g, '-') 
+            .replace(/^-|-$/g, ''); 
 
-        const finalSubdomain = subdomain || landingId; // Respaldo si el nombre viene vacío
+        const finalSubdomain = subdomain || landingId; 
         const landingUrl = `https://${finalSubdomain}.${MAIN_DOMAIN}`;
         
-        const landingInfo = { 
-            landingId, 
-            slug: finalSubdomain,
-            subdomain: finalSubdomain, // Mantenemos ambos para compatibilidad total con el dashboard
-            business, 
-            templateKey: activeTemplateKey, 
-            url: landingUrl, 
-            createdAt: new Date().toISOString() 
-        };
-
         const newLanding = new Landing({
             landingId,
             slug: finalSubdomain,
-            subdomain: finalSubdomain, // 🛠️ Guardamos ambos campos en la BD
+            subdomain: finalSubdomain, 
             userEmail: req.user.email,
             business,
             templateKey: activeTemplateKey,
@@ -631,7 +584,15 @@ app.post('/api/generate', verifyToken, async (req, res) => {
             user.tokens -= 1;
         }
         if (!user.landings) user.landings = [];
-        user.landings.push(landingInfo);
+        user.landings.push({ 
+            landingId, 
+            slug: finalSubdomain,
+            subdomain: finalSubdomain,
+            business, 
+            templateKey: activeTemplateKey, 
+            url: landingUrl, 
+            createdAt: new Date().toISOString() 
+        });
         await user.save();
 
         res.json({ success: true, landingId, url: landingUrl, remainingTokens: user.tokens });
@@ -643,7 +604,6 @@ app.post('/api/generate', verifyToken, async (req, res) => {
 
 app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
     try {
-        // 1. Extraer el 'slug' enviado desde el frontend
         const { business, htmlContent, templateKey, whatsapp, isPlatinum, slug } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
@@ -651,7 +611,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
         const activeTemplateKey = templateKey || 'cafe';
 
-        // Detección estricta y robusta de plantilla Platinum
         const isPlatinumTemplate = isPlatinum === true || 
                                    activeTemplateKey.startsWith('platinum_') || 
                                    activeTemplateKey.startsWith('platinum-') ||
@@ -661,7 +620,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(activeTemplateKey);
             
             if (!hasUnlocked) {
-                // Si la plantilla requiere pago, creamos la preferencia en Mercado Pago con back_urls actualizadas
                 const preferenceData = {
                     body: {
                         items: [{
@@ -694,13 +652,11 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
                 });
             }
         } else {
-            // Validación de tokens para planes normales / plantillas estándar
             if (user.tokens !== undefined && user.tokens <= 0) {
                 return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía.' });
             }
         }
 
-        // 2. Validar y limpiar el slug personalizado recibido
         const cleanSlug = slug 
             ? slug.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-_]/g, '').replace(/-+/g, '-')
             : '';
@@ -709,7 +665,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             return res.status(400).json({ error: 'Por favor, proporciona un enlace o subdominio válido.' });
         }
 
-        // 3. Comprobar si el slug / subdomain ya está en uso por otra página en la base de datos
         const existingLandingWithSlug = await Landing.findOne({ 
             $or: [{ slug: cleanSlug }, { subdomain: cleanSlug }] 
         });
@@ -721,11 +676,10 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         const landingId = Math.random().toString(36).substring(2, 9);
         const landingUrl = `https://${cleanSlug}.${MAIN_DOMAIN}`;
         
-        // 4. Guardar asignando ambos campos (slug y subdomain) para evitar fallos en el iframe
         const newLanding = new Landing({
             landingId,
             slug: cleanSlug,
-            subdomain: cleanSlug, // 🛠️ Sincronizado para que el dashboard y el iframe carguen bien
+            subdomain: cleanSlug, 
             userEmail: req.user.email,
             business: business || 'Mi Negocio',
             templateKey: activeTemplateKey,
@@ -733,7 +687,6 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         });
         await newLanding.save();
 
-        // Descontar token solo si no es platinum y el usuario tiene tokens finitos
         if (!isPlatinumTemplate && user.tokens !== undefined && user.tokens > 0 && user.tokens < 999999) {
             user.tokens -= 1;
         }
@@ -792,12 +745,10 @@ app.get('/api/my-landings', verifyToken, handleGetLandings);
 app.get('/api/preview/:landingId', async (req, res) => {
     try {
         const { landingId } = req.params;
-        
         const landingData = await Landing.findOne({ landingId });
         if (!landingData || !landingData.htmlContent) {
             return res.status(404).send('Landing no encontrada');
         }
-        
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(landingData.htmlContent);
     } catch (error) {
@@ -820,6 +771,136 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
         res.json({ success: true, message: 'Landing eliminada correctamente' });
     } catch (error) {
         res.status(500).json({ error: 'Error al eliminar la landing' });
+    }
+});
+
+// ================= RUTA INTELIGENTE PARA SUBDOMINIOS DE PRIMER NIVEL =================
+app.get('/', async (req, res) => {
+    try {
+        const host = req.headers.host || ''; // Ej: slugg.prestigecloser.com o prestigecloser.com
+        const parts = host.split('.');
+
+        // Si tiene exactamente 3 partes y no es 'www', es un subdominio válido de primer nivel
+        const isSubdomain = parts.length === 3 && parts[0] !== 'www';
+
+        if (isSubdomain) {
+            const subdominioBuscado = parts[0].toLowerCase(); 
+
+            const landingData = await Landing.findOne({
+                $or: [
+                    { slug: subdominioBuscado },
+                    { subdomain: subdominioBuscado }
+                ]
+            });
+
+            if (!landingData || !landingData.htmlContent) {
+                return res.status(404).send(`
+                    <!DOCTYPE html>
+                    <html lang="es">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>Página no encontrada</title>
+                        <link rel="stylesheet" href="/dist/output.css">
+                    </head>
+                    <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
+                        <div class="text-center space-y-3">
+                            <h1 class="text-4xl font-bold text-indigo-500">404</h1>
+                            <p class="text-slate-400">La página web que buscas no existe o el subdominio está inactivo.</p>
+                        </div>
+                    </body>
+                    </html>
+                `);
+            }
+
+            const owner = await User.findOne({ email: landingData.userEmail });
+
+            if (owner) {
+                const now = new Date();
+                const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
+
+                if (planVencido && owner.plan !== 'free') {
+                    return res.send(`
+                        <!DOCTYPE html>
+                        <html lang="es">
+                        <head>
+                            <meta charset="UTF-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>Suscripción Vencida - Servicio Suspendido</title>
+                            <link rel="stylesheet" href="/dist/output.css">
+                        </head>
+                        <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                            <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
+                                <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
+                                <p class="text-gray-400 text-sm mb-6">El sitio se encuentra suspendido temporalmente por falta de renovación del plan general.</p>
+                            </div>
+                        </body>
+                        </html>
+                    `);
+                }
+
+                const templateKey = landingData.templateKey;
+                if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
+                    const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
+                    const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function'
+                        ? owner.subscriptions.get(templateKey)
+                        : owner?.subscriptions?.[templateKey];
+
+                    const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
+
+                    if (!hasUnlocked || isExpired) {
+                        return res.send(`
+                            <!DOCTYPE html>
+                            <html lang="es">
+                            <head>
+                                <meta charset="UTF-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
+                                <link rel="stylesheet" href="/dist/output.css">
+                            </head>
+                            <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
+                                <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
+                                    <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
+                                    <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado.</p>
+                                </div>
+                            </body>
+                            </html>
+                        `);
+                    }
+                }
+            }
+
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(landingData.htmlContent);
+        }
+
+        // Raíz principal (prestigecloser.com)
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        return res.send(`
+            <!DOCTYPE html>
+            <html lang="es" class="scroll-smooth">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
+                <link rel="stylesheet" href="/dist/output.css">
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+            </head>
+            <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
+                <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
+                    <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
+                        <i class="fa-solid fa-rocket"></i>
+                    </div>
+                    <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
+                    <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
+                </div>
+            </body>
+            </html>
+        `);
+
+    } catch (error) {
+        console.error('Error interno del servidor al procesar el subdominio:', error);
+        res.status(500).send('Error interno del servidor');
     }
 });
 
@@ -853,9 +934,6 @@ app.get('/api/verify-platinum-access', verifyToken, async (req, res) => {
     }
 });
 
-// =========================================================================
-// 2. ENDPOINT DE ACTUALIZACIÓN (PUT) POR SI EL EDITOR USA ESTA RUTA AL GUARDAR
-// =========================================================================
 app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     try {
         const { landingId } = req.params;
@@ -871,7 +949,6 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
         if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(finalTemplateKey)) {
             const hasUnlocked = user.unlockedPlatinumTemplates && user.unlockedPlatinumTemplates.includes(finalTemplateKey);
             
-            // Verificar si la suscripción de 30 días ya expiró
             const subData = user.subscriptions && typeof user.subscriptions.get === 'function' 
                 ? user.subscriptions.get(finalTemplateKey) 
                 : user?.subscriptions?.[finalTemplateKey];
@@ -927,265 +1004,6 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     } catch (error) {
         console.error('Error en PUT /api/landings/:landingId:', error);
         res.status(500).json({ error: 'Error interno del servidor al actualizar la página' });
-    }
-});
-
-// ================= ENDPOINT PARA RESOLVER SUBDOMINIOS EN CLOUDFLARE =================
-app.get('/api/resolve-subdomain/:slug', async (req, res) => {
-    try {
-        const { slug } = req.params;
-        const cleanSlug = (slug || '').toLowerCase().trim();
-
-        // Buscar la landing en la base de datos por slug o subdomain
-        const landingData = await Landing.findOne({
-            $or: [
-                { slug: cleanSlug },
-                { subdomain: cleanSlug }
-            ]
-        });
-
-        if (!landingData || !landingData.htmlContent) {
-            return res.status(404).json({ error: 'Landing no encontrada' });
-        }
-
-        // Opcional: Validar si el dueño tiene el plan vencido antes de servir
-        const owner = await User.findOne({ email: landingData.userEmail });
-        if (owner && owner.planExpiresAt && new Date(owner.planExpiresAt) < new Date() && owner.plan !== 'free') {
-            return res.status(403).json({ error: 'Sitio suspendido por suscripción vencida' });
-        }
-
-        // Devolver el HTML limpio para que el Worker lo pinte
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.send(landingData.htmlContent);
-
-    } catch (error) {
-        console.error('Error resolviendo subdominio:', error);
-        res.status(500).json({ error: 'Error interno del servidor' });
-    }
-});
-
-// ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS (MEDIANTE MIDDLEWARE GLOBAL) =================
-app.use(async (req, res, next) => {
-    try {
-        const host = req.headers.host || ''; // Ej: 123.landinggen.prestigecloser.com, ase.prestigecloser.com o landing-ai-backend.onrender.com
-        const parts = host.split('.');
-
-        // 🛠️ EXCLUIR RENDER Y DOMINIOS PROPIOS DEL BACKEND DE LOS SUBDOMINIOS DE CLIENTES
-        const isBackendDomain = host.includes('onrender.com') || host === 'landing-ai-backend.onrender.com';
-
-        // 🛠️ DETECCIÓN FLEXIBLE DE SUBDOMINIO (Soporta tanto cliente.prestigecloser.com como cliente.landinggen.prestigecloser.com)
-        let subdominioBuscado = '';
-        
-        if (!isBackendDomain && parts.length >= 3) {
-            // Si el host incluye 'landinggen.' (ej: 123.landinggen.prestigecloser.com), el slug es la primera parte
-            if (host.includes('landinggen.')) {
-                subdominioBuscado = parts[0].toLowerCase();
-            } 
-            // Si es un subdominio directo clásico de 3 partes (ej: ase.prestigecloser.com) y no es 'www'
-            else if (parts.length === 3 && parts[0] !== 'www') {
-                subdominioBuscado = parts[0].toLowerCase();
-            }
-        }
-
-        const isSubdomain = Boolean(subdominioBuscado);
-
-        if (isSubdomain) {
-            // 🛠️ BÚSQUEDA DUAL ROBUSTA: Busca tanto por 'slug' como por 'subdomain'
-            const landingData = await Landing.findOne({
-                $or: [
-                    { slug: subdominioBuscado },
-                    { subdomain: subdominioBuscado }
-                ]
-            });
-
-            if (!landingData || !landingData.htmlContent) {
-                res.status(404).send(`
-                    <!DOCTYPE html>
-                    <html lang="es">
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Página no encontrada</title>
-                        <link rel="stylesheet" href="/dist/output.css">
-                    </head>
-                    <body class="bg-slate-950 text-white flex items-center justify-center h-screen">
-                        <div class="text-center space-y-3">
-                            <h1 class="text-4xl font-bold text-indigo-500">404</h1>
-                            <p class="text-slate-400">La página web para el subdominio "${subdominioBuscado}" no existe o el subdominio está inactivo.</p>
-                        </div>
-                    </body>
-                    </html>
-                `);
-                return;
-            }
-
-            // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS
-            const owner = await User.findOne({ email: landingData.userEmail });
-
-            if (owner) {
-                const now = new Date();
-
-                // 1. VALIDACIÓN DE EXPIRACIÓN DEL PLAN GENERAL (Pro / Agencia Platinum)
-                const planVencido = owner.planExpiresAt && new Date(owner.planExpiresAt) < now;
-
-                if (planVencido && owner.plan !== 'free') {
-                    // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLAN VENCIDO)
-                    try {
-                        const { enviarCorreoBrevo } = require('./services/brevoService');
-                        await enviarCorreoBrevo({
-                            toEmail: owner.email,
-                            toName: owner.email.split('@')[0],
-                            subject: '⚠️ Alerta: Tu sitio web se encuentra suspendido por suscripción vencida',
-                            htmlContent: `
-                                <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
-                                    <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
-                                    <a href="https://prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
-                                </div>
-                            `
-                        });
-                    } catch (emailErr) {
-                        console.error("Error al enviar correo Brevo por plan vencido:", emailErr);
-                    }
-
-                    res.send(`
-                        <!DOCTYPE html>
-                        <html lang="es">
-                        <head>
-                            <meta charset="UTF-8">
-                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                            <title>Suscripción Vencida - Servicio Suspendido</title>
-                            <link rel="stylesheet" href="/dist/output.css">
-                            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-                        </head>
-                        <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                            <div class="bg-gray-900 p-8 rounded-2xl border border-amber-500/30 shadow-2xl max-w-md w-full">
-                                <div class="text-amber-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                                <h1 class="text-2xl font-bold mb-2">Suscripción General Vencida</h1>
-                                <p class="text-gray-400 text-sm mb-6">La suscripción mensual del plan de este sitio web ha expirado y el pago automático no se ha completado. El sitio se encuentra suspendido temporalmente.</p>
-                                <span class="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación de plan</span>
-                            </div>
-                        </body>
-                        </html>
-                    `);
-                    return;
-                }
-
-                // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
-                const templateKey = landingData.templateKey;
-                if (typeof esPlantillaPlatinum === 'function' && esPlantillaPlatinum(templateKey)) {
-                    const hasUnlocked = owner.unlockedPlatinumTemplates && owner.unlockedPlatinumTemplates.includes(templateKey);
-                   
-                    const subData = owner.subscriptions && typeof owner.subscriptions.get === 'function'
-                        ? owner.subscriptions.get(templateKey)
-                        : owner?.subscriptions?.[templateKey];
-
-                    const isExpired = subData && subData.expiresAt ? new Date(subData.expiresAt) < now : false;
-
-                    if (!hasUnlocked || isExpired) {
-                        // 🚀 ENVÍO DE CORREO BREVO (SUSPENSIÓN POR PLANTILLA PLATINUM VENCIDA)
-                        try {
-                            const { enviarCorreoBrevo } = require('./services/brevoService');
-                            await enviarCorreoBrevo({
-                                toEmail: owner.email,
-                                toName: owner.email.split('@')[0],
-                                subject: `⚠️ Alerta: Plantilla Platinum (${templateKey}) fuera de servicio`,
-                                htmlContent: `
-                                    <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #ef4444; max-width: 600px; margin: auto;">
-                                        <h2 style="color: #ef4444; margin-top: 0;">Plantilla Exclusiva Fuera de Servicio</h2>
-                                        <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que el alquiler exclusivo de la plantilla <strong>${templateKey}</strong> ha expirado sin renovación, por lo que el sitio web asociado se encuentra temporalmente suspendido.</p>
-                                        <p style="color: #94a3b8; line-height: 1.5;">Renueva tu alquiler exclusivo en tu panel de control para restaurar el acceso público inmediatamente.</p>
-                                        <a href="https://prestigecloser.com" style="display: inline-block; background-color: #ef4444; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Plantilla</a>
-                                    </div>
-                                `
-                            });
-                        } catch (emailErr) {
-                            console.error("Error al enviar correo Brevo por plantilla Platinum vencida:", emailErr);
-                        }
-
-                        res.send(`
-                            <!DOCTYPE html>
-                            <html lang="es">
-                            <head>
-                                <meta charset="UTF-8">
-                                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                                <title>Servicio Suspendido - Plantilla Fuera de Servicio</title>
-                                <link rel="stylesheet" href="/dist/output.css">
-                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-                            </head>
-                            <body class="bg-gray-950 text-white h-screen flex flex-col items-center justify-center text-center px-4">
-                                <div class="bg-gray-900 p-8 rounded-2xl border border-red-500/30 shadow-2xl max-w-md w-full">
-                                    <div class="text-red-500 text-5xl mb-4 animate-pulse"><i class="fa-solid fa-triangle-exclamation"></i></div>
-                                    <h1 class="text-2xl font-bold mb-2">Plantilla Fuera de Servicio</h1>
-                                    <p class="text-gray-400 text-sm mb-6">El alquiler exclusivo de esta plantilla Platinum no ha sido renovado por su propietario. El sitio web se encuentra temporalmente suspendido.</p>
-                                    <span class="inline-block bg-red-500/10 text-red-400 border border-red-500/20 text-xs px-3 py-1.5 rounded-full font-medium">Estado: Suspendido por falta de renovación</span>
-                                </div>
-                            </body>
-                            </html>
-                        `);
-                        return;
-                    }
-                }
-            }
-
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            return res.send(landingData.htmlContent);
-        }
-
-        // Si entran al backend de Render directamente (ej. landing-ai-backend.onrender.com) y es la ruta raíz GET '/'
-        if (isBackendDomain && req.method === 'GET' && req.path === '/') {
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            return res.send(`
-                <!DOCTYPE html>
-                <html lang="es">
-                <head>
-                    <meta charset="UTF-8">
-                    <title>LandingGen Backend Activo 🚀</title>
-                    <script src="https://cdn.tailwindcss.com"></script>
-                </head>
-                <body class="bg-slate-950 text-white flex items-center justify-center h-screen text-center">
-                    <div class="p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-xl">
-                        <h1 class="text-2xl font-bold text-emerald-400 mb-2">¡El Servidor Backend está en línea! 🟢</h1>
-                        <p class="text-slate-400 text-sm">Las APIs y webhooks operan con normalidad.</p>
-                    </div>
-                </body>
-                </html>
-            `);
-        }
-
-        // Si entran a la raíz principal de tu SaaS (prestigecloser.com) sin subdominio y es GET '/'
-        if (!isSubdomain && !isBackendDomain && req.method === 'GET' && req.path === '/') {
-            res.setHeader('Content-Type', 'text/html; charset=utf-8');
-            return res.send(`
-                <!DOCTYPE html>
-                <html lang="es" class="scroll-smooth">
-                <head>
-                    <meta charset="UTF-8">
-                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
-                    <link rel="stylesheet" href="/dist/output.css">
-                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-                </head>
-                <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
-                    <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
-                        <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
-                            <i class="fa-solid fa-rocket"></i>
-                        </div>
-                        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
-                        <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
-                    </div>
-                </body>
-                </html>
-            `);
-        }
-
-        // Pasar al siguiente controlador o ruta de API (POST, PUT, GET /api/...)
-        next();
-
-    } catch (error) {
-        console.error('Error interno del servidor en middleware de subdominios:', error);
-        res.status(500).send('Error interno del servidor');
     }
 });
 
