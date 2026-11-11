@@ -930,8 +930,8 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS =================
-app.all('*', async (req, res) => {
+// ================= RUTA INTELIGENTE PARA SUBDOMINIOS Y LANDINGS (MEDIANTE MIDDLEWARE GLOBAL) =================
+app.use(async (req, res, next) => {
     try {
         const host = req.headers.host || ''; // Ej: ase.prestigecloser.com, prestigecloser.com o landing-ai-backend.onrender.com
         const parts = host.split('.');
@@ -954,7 +954,7 @@ app.all('*', async (req, res) => {
             });
 
             if (!landingData || !landingData.htmlContent) {
-                return res.status(404).send(`
+                res.status(404).send(`
                     <!DOCTYPE html>
                     <html lang="es">
                     <head>
@@ -971,6 +971,7 @@ app.all('*', async (req, res) => {
                     </body>
                     </html>
                 `);
+                return;
             }
 
             // BUSCAR AL PROPIETARIO PARA VALIDAR PLANES Y VIGENCIAS
@@ -993,7 +994,7 @@ app.all('*', async (req, res) => {
                             htmlContent: `
                                 <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; border: 1px solid #f59e0b; max-width: 600px; margin: auto;">
                                     <h2 style="color: #f59e0b; margin-top: 0;">Sitio Web Suspendido Temporalmente</h2>
-                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
+                                    <p style="color: #94a3b8; line-height: 1.5;">Hola, te informamos que las páginas web asociadas a tu cuenta han sido suspendidas porque tu plan general (${owner.plan.toUpperCase()}) ha expirado sin renovación automática.</p>
                                     <p style="color: #94a3b8; line-height: 1.5;">Para reactivar el acceso público inmediato de tus sitios, por favor renueva tu suscripción desde tu panel de control.</p>
                                     <a href="https://prestigecloser.com" style="display: inline-block; background-color: #f59e0b; color: #0f172a; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Renovar Suscripción</a>
                                 </div>
@@ -1003,7 +1004,7 @@ app.all('*', async (req, res) => {
                         console.error("Error al enviar correo Brevo por plan vencido:", emailErr);
                     }
 
-                    return res.send(`
+                    res.send(`
                         <!DOCTYPE html>
                         <html lang="es">
                         <head>
@@ -1023,6 +1024,7 @@ app.all('*', async (req, res) => {
                         </body>
                         </html>
                     `);
+                    return;
                 }
 
                 // 2. VALIDACIÓN DE VIGENCIA PLATINUM INDIVIDUAL (30 DÍAS)
@@ -1057,7 +1059,7 @@ app.all('*', async (req, res) => {
                             console.error("Error al enviar correo Brevo por plantilla Platinum vencida:", emailErr);
                         }
 
-                        return res.send(`
+                        res.send(`
                             <!DOCTYPE html>
                             <html lang="es">
                             <head>
@@ -1077,6 +1079,7 @@ app.all('*', async (req, res) => {
                             </body>
                             </html>
                         `);
+                        return;
                     }
                 }
             }
@@ -1085,8 +1088,8 @@ app.all('*', async (req, res) => {
             return res.send(landingData.htmlContent);
         }
 
-        // Si entran al backend de Render directamente (ej. landing-ai-backend.onrender.com)
-        if (isBackendDomain) {
+        // Si entran al backend de Render directamente (ej. landing-ai-backend.onrender.com) y es la ruta raíz GET '/'
+        if (isBackendDomain && req.method === 'GET' && req.path === '/') {
             res.setHeader('Content-Type', 'text/html; charset=utf-8');
             return res.send(`
                 <!DOCTYPE html>
@@ -1106,32 +1109,37 @@ app.all('*', async (req, res) => {
             `);
         }
 
-        // Si entran a la raíz principal (prestigecloser.com) sin subdominio -> Portada profesional del SaaS
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        return res.send(`
-            <!DOCTYPE html>
-            <html lang="es" class="scroll-smooth">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
-                <link rel="stylesheet" href="/dist/output.css">
-                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
-            </head>
-            <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
-                <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
-                    <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
-                        <i class="fa-solid fa-rocket"></i>
+        // Si entran a la raíz principal de tu SaaS (prestigecloser.com) sin subdominio y es GET '/'
+        if (!isSubdomain && !isBackendDomain && req.method === 'GET' && req.path === '/') {
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            return res.send(`
+                <!DOCTYPE html>
+                <html lang="es" class="scroll-smooth">
+                <head>
+                    <meta charset="UTF-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                    <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
+                    <link rel="stylesheet" href="/dist/output.css">
+                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
+                </head>
+                <body class="bg-slate-950 text-white flex items-center justify-center min-h-screen text-center px-4">
+                    <div class="space-y-6 max-w-xl bg-slate-900/80 p-8 rounded-3xl border border-slate-800 shadow-2xl backdrop-blur-md">
+                        <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
+                            <i class="fa-solid fa-rocket"></i>
+                        </div>
+                        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
+                        <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
                     </div>
-                    <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
-                    <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
-                </div>
-            </body>
-            </html>
-        `);
+                </body>
+                </html>
+            `);
+        }
+
+        // Pasar al siguiente controlador o ruta de API (POST, PUT, GET /api/...)
+        next();
 
     } catch (error) {
-        console.error('Error interno del servidor al procesar el subdominio:', error);
+        console.error('Error interno del servidor en middleware de subdominios:', error);
         res.status(500).send('Error interno del servidor');
     }
 });
