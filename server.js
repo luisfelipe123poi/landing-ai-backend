@@ -780,6 +780,33 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
+// ================= ENDPOINT DE ESTADO DE USUARIO =================
+app.get('/api/user-status', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findOne({ email: req.user.email });
+        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        // Validar si expiró el plan general para degradarlo a free
+        const now = new Date();
+        if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < now) {
+            user.plan = 'free';
+            user.tokens = getTokensForPlan('free');
+            await user.save();
+        }
+
+        res.json({
+            success: true,
+            email: user.email,
+            plan: user.plan || 'free',
+            tokens: user.tokens ?? getTokensForPlan(user.plan || 'free'),
+            unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || []
+        });
+    } catch (error) {
+        console.error('Error al obtener estado del usuario:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
 // ================= RUTA PARA EL PROXY DE SUBDOMINIOS Y FREEMIUM BANNER =================
 app.get('/public-landing/:slug', async (req, res) => {
     try {
