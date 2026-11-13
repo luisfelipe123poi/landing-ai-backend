@@ -872,15 +872,49 @@ app.get('/public-landing/:slug', async (req, res) => {
 
         let renderedHtml = landingData.htmlContent;
 
-        // INYECCIÓN DE BANNER FLOTANTE DE MARCA PARA USUARIOS CON PLAN FREE (CON POINTER-EVENTS SEGURO)
+        // INYECCIÓN DE BANNER FLOTANTE COMPACTO Y NO INTRUSIVO PARA PLAN FREE
         if (isFreePlan) {
             const freeBannerHtml = `
-                <div id="freemium-floating-banner" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 999999; pointer-events: none; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; font-family: 'Plus Jakarta Sans', sans-serif;">
-                    <div style="background: linear-gradient(to right, #0f172a, #1e1b4b, #0f172a); border: 1px solid rgba(99, 102, 241, 0.4); padding: 10px 16px; border-radius: 12px; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.8); pointer-events: auto;">
-                        <span style="background: #6366f1; color: white; font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em;">Free</span>
-                        <p style="color: #f8fafc; font-size: 13px; font-weight: 600; margin: 0;">Creado gratis con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline;">LandingGen</a> — Crea la tuya aquí</p>
+                <style>
+                    /* Asegurar que la barra inferior no afecte la interacción general de la página */
+                    body {
+                        padding-bottom: 70px !important;
+                    }
+                    #landinggen-free-badge {
+                        position: fixed;
+                        bottom: 15px;
+                        left: 50%;
+                        transform: translateX(-50%);
+                        z-index: 999999;
+                        background: rgba(15, 23, 42, 0.95);
+                        border: 1px solid rgba(99, 102, 241, 0.5);
+                        backdrop-filter: blur(10px);
+                        padding: 8px 16px;
+                        border-radius: 9999px;
+                        display: flex;
+                        align-items: center;
+                        gap: 12px;
+                        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+                        font-family: 'Plus Jakarta Sans', sans-serif;
+                        white-space: nowrap;
+                    }
+                    @media (max-width: 640px) {
+                        #landinggen-free-badge {
+                            left: 10px;
+                            right: 10px;
+                            transform: none;
+                            justify-content: space-between;
+                            border-radius: 12px;
+                            font-size: 11px;
+                        }
+                    }
+                </style>
+                <div id="landinggen-free-badge">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="background: #6366f1; color: white; font-size: 9px; font-weight: 800; padding: 3px 6px; border-radius: 4px; text-transform: uppercase;">Free</span>
+                        <span style="color: #f8fafc; font-size: 12px; font-weight: 500;">Creado con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline; font-weight: 700;">LandingGen</a></span>
                     </div>
-                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 10px 18px; border-radius: 10px; font-size: 12px; font-weight: bold; text-decoration: none; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); white-space: nowrap; pointer-events: auto;">Quitar marca ($10 USD)</a>
+                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 5px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-decoration: none; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);">Quitar marca ($10 USD)</a>
                 </div>
             `;
             if (renderedHtml.includes('</body>')) {
