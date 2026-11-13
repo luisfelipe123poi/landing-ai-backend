@@ -780,7 +780,7 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= RUTA PARA EL PROXY DE SUBDOMINIOS (CLOUDFLARE WORKER) =================
+// ================= RUTA PARA EL PROXY DE SUBDOMINIOS Y FREEMIUM BANNER =================
 app.get('/public-landing/:slug', async (req, res) => {
     try {
         const subdominioBuscado = (req.params.slug || '').toLowerCase().trim();
@@ -813,6 +813,7 @@ app.get('/public-landing/:slug', async (req, res) => {
         }
 
         const owner = await User.findOne({ email: landingData.userEmail });
+        let isFreePlan = !owner || owner.plan === 'free' || !owner.plan;
 
         if (owner) {
             const now = new Date();
@@ -870,6 +871,25 @@ app.get('/public-landing/:slug', async (req, res) => {
         }
 
         let renderedHtml = landingData.htmlContent;
+
+        // INYECCIÓN DE BANNER FLOTANTE DE MARCA PARA USUARIOS CON PLAN FREE
+        if (isFreePlan) {
+            const freeBannerHtml = `
+                <div id="freemium-floating-banner" style="position: fixed; bottom: 0; left: 0; right: 0; z-index: 999999; background: linear-gradient(to right, #0f172a, #1e1b4b, #0f172a); border-top: 1px solid rgba(99, 102, 241, 0.4); padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 -10px 25px rgba(0,0,0,0.8); font-family: 'Plus Jakarta Sans', sans-serif;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="background: #6366f1; color: white; font-size: 10px; font-weight: 800; padding: 4px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em;">Free</span>
+                        <p style="color: #f8fafc; font-size: 13px; font-weight: 600; margin: 0;">Creado gratis con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline;">LandingGen</a> — Crea la tuya aquí</p>
+                    </div>
+                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: bold; text-decoration: none; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4); white-space: nowrap;">Quitar marca ($10 USD)</a>
+                </div>
+            `;
+            if (renderedHtml.includes('</body>')) {
+                renderedHtml = renderedHtml.replace('</body>', freeBannerHtml + '</body>');
+            } else {
+                renderedHtml += freeBannerHtml;
+            }
+        }
+
         if (!renderedHtml.includes(MAIN_CSS_URL)) {
             if (renderedHtml.includes('</head>')) {
                 renderedHtml = renderedHtml.replace('</head>', `<link rel="stylesheet" href="${MAIN_CSS_URL}"></head>`);
