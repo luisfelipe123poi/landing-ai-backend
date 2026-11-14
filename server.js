@@ -941,7 +941,7 @@ app.get('/public-landing/:slug', async (req, res) => {
                         <span style="background: #6366f1; color: white; font-size: 9px; font-weight: 800; padding: 3px 6px; border-radius: 4px; text-transform: uppercase;">Free</span>
                         <span style="color: #f8fafc; font-size: 12px; font-weight: 500;">Creado con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline; font-weight: 700;">LandingGen</a></span>
                     </div>
-                    <a href="Crea la tuya ¡AHORA!" target="_blank" style="background: #4f46e5; color: white; padding: 5px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-decoration: none; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);">Quitar marca ($10 USD)</a>
+                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 5px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-decoration: none; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);">Crea la tuya ¡AHORA!</a>
                 </div>
             `;
             if (renderedHtml.includes('</body>')) {
