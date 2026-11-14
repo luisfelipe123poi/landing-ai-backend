@@ -780,34 +780,7 @@ app.delete('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
-// ================= ENDPOINT DE ESTADO DE USUARIO =================
-app.get('/api/user-status', verifyToken, async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-        // Validar si expiró el plan general para degradarlo a free
-        const now = new Date();
-        if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < now) {
-            user.plan = 'free';
-            user.tokens = getTokensForPlan('free');
-            await user.save();
-        }
-
-        res.json({
-            success: true,
-            email: user.email,
-            plan: user.plan || 'free',
-            tokens: user.tokens ?? getTokensForPlan(user.plan || 'free'),
-            unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || []
-        });
-    } catch (error) {
-        console.error('Error al obtener estado del usuario:', error);
-        res.status(500).json({ error: 'Error interno del servidor' });
-    }
-});
-
-// ================= RUTA PARA EL PROXY DE SUBDOMINIOS Y FREEMIUM BANNER =================
+// ================= RUTA PARA EL PROXY DE SUBDOMINIOS (CLOUDFLARE WORKER) =================
 app.get('/public-landing/:slug', async (req, res) => {
     try {
         const subdominioBuscado = (req.params.slug || '').toLowerCase().trim();
@@ -840,7 +813,6 @@ app.get('/public-landing/:slug', async (req, res) => {
         }
 
         const owner = await User.findOne({ email: landingData.userEmail });
-        let isFreePlan = !owner || owner.plan === 'free' || !owner.plan;
 
         if (owner) {
             const now = new Date();
@@ -898,59 +870,6 @@ app.get('/public-landing/:slug', async (req, res) => {
         }
 
         let renderedHtml = landingData.htmlContent;
-
-        // INYECCIÓN DE BANNER FLOTANTE COMPACTO Y NO INTRUSIVO PARA PLAN FREE
-        if (isFreePlan) {
-            const freeBannerHtml = `
-                <style>
-                    /* Asegurar que la barra inferior no afecte la interacción general de la página */
-                    body {
-                        padding-bottom: 70px !important;
-                    }
-                    #landinggen-free-badge {
-                        position: fixed;
-                        bottom: 15px;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        z-index: 999999;
-                        background: rgba(15, 23, 42, 0.95);
-                        border: 1px solid rgba(99, 102, 241, 0.5);
-                        backdrop-filter: blur(10px);
-                        padding: 8px 16px;
-                        border-radius: 9999px;
-                        display: flex;
-                        align-items: center;
-                        gap: 12px;
-                        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
-                        font-family: 'Plus Jakarta Sans', sans-serif;
-                        white-space: nowrap;
-                    }
-                    @media (max-width: 640px) {
-                        #landinggen-free-badge {
-                            left: 10px;
-                            right: 10px;
-                            transform: none;
-                            justify-content: space-between;
-                            border-radius: 12px;
-                            font-size: 11px;
-                        }
-                    }
-                </style>
-                <div id="landinggen-free-badge">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="background: #6366f1; color: white; font-size: 9px; font-weight: 800; padding: 3px 6px; border-radius: 4px; text-transform: uppercase;">Free</span>
-                        <span style="color: #f8fafc; font-size: 12px; font-weight: 500;">Creado con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline; font-weight: 700;">LandingGen</a></span>
-                    </div>
-                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 5px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-decoration: none; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);">Quitar marca ($10 USD)</a>
-                </div>
-            `;
-            if (renderedHtml.includes('</body>')) {
-                renderedHtml = renderedHtml.replace('</body>', freeBannerHtml + '</body>');
-            } else {
-                renderedHtml += freeBannerHtml;
-            }
-        }
-
         if (!renderedHtml.includes(MAIN_CSS_URL)) {
             if (renderedHtml.includes('</head>')) {
                 renderedHtml = renderedHtml.replace('</head>', `<link rel="stylesheet" href="${MAIN_CSS_URL}"></head>`);
