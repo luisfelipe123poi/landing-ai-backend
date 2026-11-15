@@ -899,13 +899,13 @@ app.get('/public-landing/:slug', async (req, res) => {
 
         let renderedHtml = landingData.htmlContent;
 
-        // INYECCIÓN DE BANNER AZUL CON EXTREMOS DIFUMINADOS
+        // INYECCIÓN DE BANNER AZUL MÁS DELGADO Y CON DIFUMINADO LATERAL AMPLIO
         if (isFreePlan) {
             const freeBannerHtml = `
                 <style>
-                    /* Asegurar que el contenido de la página no quede oculto detrás de la barra */
+                    /* Ajustar el padding inferior de la página acorde al banner más delgado */
                     body {
-                        padding-bottom: 65px !important;
+                        padding-bottom: 50px !important;
                     }
                     #landinggen-free-badge {
                         position: fixed;
@@ -913,28 +913,28 @@ app.get('/public-landing/:slug', async (req, res) => {
                         left: 0;
                         width: 100%;
                         z-index: 999999;
-                        /* Fondo azul con degradado lineal y efecto difuminado en los extremos usando máscara */
-                        background: linear-gradient(90deg, rgba(30, 58, 138, 0) 0%, rgba(30, 64, 175, 0.95) 15%, rgba(30, 64, 175, 0.95) 85%, rgba(30, 58, 138, 0) 100%);
-                        backdrop-filter: blur(8px);
-                        -webkit-backdrop-filter: blur(8px);
+                        /* Degradado azul con difuminado lateral mucho más largo y extendido */
+                        background: linear-gradient(90deg, rgba(30, 58, 138, 0) 0%, rgba(30, 64, 175, 0.4) 25%, rgba(30, 64, 175, 0.9) 50%, rgba(30, 64, 175, 0.4) 75%, rgba(30, 58, 138, 0) 100%);
+                        backdrop-filter: blur(6px);
+                        -webkit-backdrop-filter: blur(6px);
                         color: white;
-                        padding: 12px 24px;
+                        padding: 6px 30px; /* Menos alto (más delgado) */
                         display: flex;
                         align-items: center;
                         justify-content: center;
                         gap: 16px;
-                        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+                        box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.2);
                         font-family: 'Plus Jakarta Sans', sans-serif;
                     }
                     #landinggen-free-badge a.cta-btn {
                         background: #3b82f6;
                         color: #ffffff;
-                        padding: 6px 16px;
+                        padding: 4px 12px; /* Botón más compacto */
                         border-radius: 9999px;
                         font-weight: 700;
-                        font-size: 13px;
+                        font-size: 12px;
                         text-decoration: none;
-                        box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4);
+                        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
                         white-space: nowrap;
                         transition: background 0.2s;
                     }
@@ -944,16 +944,16 @@ app.get('/public-landing/:slug', async (req, res) => {
                     @media (max-width: 640px) {
                         #landinggen-free-badge {
                             flex-direction: column;
-                            gap: 8px;
-                            padding: 10px 16px;
+                            gap: 6px;
+                            padding: 8px 12px;
                             text-align: center;
-                            font-size: 12px;
-                            background: rgba(30, 64, 175, 0.98); /* En móvil se quita el difuminado lateral para aprovechar el ancho */
+                            font-size: 11px;
+                            background: rgba(30, 64, 175, 0.95); /* En móvil se mantiene sólido para legibilidad */
                         }
                     }
                 </style>
                 <div id="landinggen-free-badge">
-                    <span style="font-size: 13px; font-weight: 500;">
+                    <span style="font-size: 12px; font-weight: 500;">
                         🚀 Esta página fue creada con <strong style="font-weight: 700;">LandingGen</strong>. ¿Quieres una para tu negocio?
                     </span>
                     <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" class="cta-btn">Crear mi Landing Gratis</a>
