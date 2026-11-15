@@ -899,51 +899,62 @@ app.get('/public-landing/:slug', async (req, res) => {
 
         let renderedHtml = landingData.htmlContent;
 
-        // INYECCIÓN DE BANNER FLOTANTE COMPACTO Y NO INTRUSIVO PARA PLAN FREE
+        // INYECCIÓN DE BANNER INFERIOR A ANCHO COMPLETO (ESTILO FOTO 1)
         if (isFreePlan) {
             const freeBannerHtml = `
                 <style>
-                    /* Asegurar que la barra inferior no afecte la interacción general de la página */
+                    /* Asegurar que el contenido de la página no quede oculto detrás de la barra */
                     body {
-                        padding-bottom: 70px !important;
+                        padding-bottom: 65px !important;
                     }
                     #landinggen-free-badge {
                         position: fixed;
-                        bottom: 15px;
-                        left: 50%;
-                        transform: translateX(-50%);
+                        bottom: 0;
+                        left: 0;
+                        width: 100%;
                         z-index: 999999;
-                        background: rgba(15, 23, 42, 0.95);
-                        border: 1px solid rgba(99, 102, 241, 0.5);
-                        backdrop-filter: blur(10px);
-                        padding: 8px 16px;
-                        border-radius: 9999px;
+                        background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+                        color: white;
+                        padding: 12px 20px;
                         display: flex;
                         align-items: center;
-                        gap: 12px;
-                        box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+                        justify-content: center;
+                        gap: 16px;
+                        box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
                         font-family: 'Plus Jakarta Sans', sans-serif;
+                    }
+                    #landinggen-free-badge a.cta-btn {
+                        background: #ffffff;
+                        color: #4f46e5;
+                        padding: 6px 16px;
+                        border-radius: 9999px;
+                        font-weight: 700;
+                        font-size: 13px;
+                        text-decoration: none;
+                        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
                         white-space: nowrap;
+                    }
+                    #landinggen-free-badge a.cta-btn:hover {
+                        background: #f8fafc;
                     }
                     @media (max-width: 640px) {
                         #landinggen-free-badge {
-                            left: 10px;
-                            right: 10px;
-                            transform: none;
-                            justify-content: space-between;
-                            border-radius: 12px;
-                            font-size: 11px;
+                            flex-direction: column;
+                            gap: 8px;
+                            padding: 10px;
+                            text-align: center;
+                            font-size: 12px;
                         }
                     }
                 </style>
                 <div id="landinggen-free-badge">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="background: #6366f1; color: white; font-size: 9px; font-weight: 800; padding: 3px 6px; border-radius: 4px; text-transform: uppercase;">Free</span>
-                        <span style="color: #f8fafc; font-size: 12px; font-weight: 500;">Creado con <a href="https://${MAIN_DOMAIN}" target="_blank" style="color: #818cf8; text-decoration: underline; font-weight: 700;">LandingGen</a></span>
-                    </div>
-                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" style="background: #4f46e5; color: white; padding: 5px 12px; border-radius: 9999px; font-size: 11px; font-weight: bold; text-decoration: none; box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);">Crea la tuya !AHORA¡</a>
+                    <span style="font-size: 13px; font-weight: 500;">
+                        🚀 Esta página fue creada con <strong style="font-weight: 700;">LandingGen</strong>. ¿Quieres una para tu negocio?
+                    </span>
+                    <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" class="cta-btn">Crear mi Landing Gratis</a>
                 </div>
             `;
+
             if (renderedHtml.includes('</body>')) {
                 renderedHtml = renderedHtml.replace('</body>', freeBannerHtml + '</body>');
             } else {
