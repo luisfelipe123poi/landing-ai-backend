@@ -899,7 +899,7 @@ app.get('/public-landing/:slug', async (req, res) => {
 
         let renderedHtml = landingData.htmlContent;
 
-        // INYECCIÓN DE BANNER INFERIOR A ANCHO COMPLETO (ESTILO FOTO 1)
+        // INYECCIÓN DE BANNER AZUL CON EXTREMOS DIFUMINADOS
         if (isFreePlan) {
             const freeBannerHtml = `
                 <style>
@@ -913,9 +913,12 @@ app.get('/public-landing/:slug', async (req, res) => {
                         left: 0;
                         width: 100%;
                         z-index: 999999;
-                        background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+                        /* Fondo azul con degradado lineal y efecto difuminado en los extremos usando máscara */
+                        background: linear-gradient(90deg, rgba(30, 58, 138, 0) 0%, rgba(30, 64, 175, 0.95) 15%, rgba(30, 64, 175, 0.95) 85%, rgba(30, 58, 138, 0) 100%);
+                        backdrop-filter: blur(8px);
+                        -webkit-backdrop-filter: blur(8px);
                         color: white;
-                        padding: 12px 20px;
+                        padding: 12px 24px;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -924,26 +927,28 @@ app.get('/public-landing/:slug', async (req, res) => {
                         font-family: 'Plus Jakarta Sans', sans-serif;
                     }
                     #landinggen-free-badge a.cta-btn {
-                        background: #ffffff;
-                        color: #4f46e5;
+                        background: #3b82f6;
+                        color: #ffffff;
                         padding: 6px 16px;
                         border-radius: 9999px;
                         font-weight: 700;
                         font-size: 13px;
                         text-decoration: none;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+                        box-shadow: 0 2px 10px rgba(59, 130, 246, 0.4);
                         white-space: nowrap;
+                        transition: background 0.2s;
                     }
                     #landinggen-free-badge a.cta-btn:hover {
-                        background: #f8fafc;
+                        background: #2563eb;
                     }
                     @media (max-width: 640px) {
                         #landinggen-free-badge {
                             flex-direction: column;
                             gap: 8px;
-                            padding: 10px;
+                            padding: 10px 16px;
                             text-align: center;
                             font-size: 12px;
+                            background: rgba(30, 64, 175, 0.98); /* En móvil se quita el difuminado lateral para aprovechar el ancho */
                         }
                     }
                 </style>
