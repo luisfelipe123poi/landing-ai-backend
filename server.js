@@ -607,7 +607,13 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         const { business, htmlContent, templateKey, whatsapp, isPlatinum, slug } = req.body;
 
         let user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+        if (!user) {
+            return res.status(404).json({ 
+                success: false,
+                modalTitle: 'Usuario no encontrado',
+                error: 'No pudimos encontrar tu cuenta en el sistema.' 
+            });
+        }
 
         const activeTemplateKey = templateKey || 'cafe';
 
@@ -644,8 +650,12 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
                 const result = await preference.create(preferenceData);
                 const initPoint = result.init_point || result.sandbox_init_point;
 
+                // Respuesta estructurada para abrir un modal de PAGO / PLATINUM nativo en el frontend
                 return res.status(403).json({ 
+                    success: false,
                     requiresPayment: true,
+                    modalType: 'payment_platinum',
+                    modalTitle: 'Plantilla Exclusiva Platinum',
                     init_point: initPoint,
                     error: 'ACCESO_RESTRINGIDO_PAGO',
                     message: 'Esta es una Plantilla Exclusiva Platinum. Debes adquirir su alquiler antes de publicarla.' 
@@ -653,7 +663,12 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             }
         } else {
             if (user.tokens !== undefined && user.tokens <= 0) {
-                return res.status(403).json({ error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía.' });
+                return res.status(403).json({ 
+                    success: false,
+                    modalType: 'alert_tokens',
+                    modalTitle: 'Límite Alcanzado',
+                    error: 'Has alcanzado el límite de tu plan. Actualiza tu membresía.' 
+                });
             }
         }
 
@@ -662,7 +677,12 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
             : '';
 
         if (!cleanSlug) {
-            return res.status(400).json({ error: 'Por favor, proporciona un enlace o subdominio válido.' });
+            return res.status(400).json({ 
+                success: false,
+                modalType: 'alert_slug',
+                modalTitle: 'Enlace Inválido',
+                error: 'Por favor, proporciona un enlace o subdominio válido.' 
+            });
         }
 
         const existingLandingWithSlug = await Landing.findOne({ 
@@ -670,7 +690,12 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         });
         
         if (existingLandingWithSlug) {
-            return res.status(400).json({ error: `El enlace "${cleanSlug}" ya está en uso. Por favor, elige otro.` });
+            return res.status(400).json({ 
+                success: false,
+                modalType: 'alert_slug_in_use',
+                modalTitle: 'Enlace Ocupado',
+                error: `El enlace "${cleanSlug}" ya está en uso. Por favor, elige otro.` 
+            });
         }
 
         const landingId = Math.random().toString(36).substring(2, 9);
@@ -704,8 +729,12 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
         
         await user.save();
 
+        // Respuesta de ÉXITO estructurada para el modal nativo verde/éxito
         res.json({ 
             success: true, 
+            modalType: 'success_published',
+            modalTitle: '¡Publicado con Éxito! 🚀',
+            message: 'Tu página web ha sido guardada y publicada correctamente.',
             landingId, 
             url: landingUrl, 
             remainingTokens: user.tokens 
@@ -713,31 +742,14 @@ app.post('/api/save-custom-landing', verifyToken, async (req, res) => {
 
     } catch (error) {
         console.error('CRITICAL ERROR en /api/save-custom-landing:', error);
-        res.status(500).json({ error: 'Error interno en el servidor al guardar la página: ' + error.message });
+        res.status(500).json({ 
+            success: false,
+            modalType: 'error_server',
+            modalTitle: 'Error del Servidor',
+            error: 'Error interno en el servidor al guardar la página: ' + error.message 
+        });
     }
 });
-
-const handleGetLandings = async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-
-        const fullLandings = await Landing.find({ userEmail: req.user.email });
-        
-        const mappedLandings = (user.landings || []).map(l => {
-            const dbLanding = fullLandings.find(fl => fl.landingId === l.landingId);
-            return {
-                ...(l.toObject ? l.toObject() : l),
-                templateKey: l.templateKey || dbLanding?.templateKey || 'cafe'
-            };
-        });
-
-        res.json({ success: true, landings: mappedLandings, unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || [] });
-    } catch (error) {
-        console.error('Error al obtener las landings:', error);
-        res.status(500).json({ error: 'Error al obtener las landings' });
-    }
-};
 
 app.get('/api/landings', verifyToken, handleGetLandings);
 app.get('/api/my-landings', verifyToken, handleGetLandings);
