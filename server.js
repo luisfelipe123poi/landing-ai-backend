@@ -13,8 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'tu_secreto_super_seguro';
 
-// Definición de tu dominio base limpio para los subdominios (ej. prestigecloser.com)
-const MAIN_DOMAIN = 'prestigecloser.com';
+// Definición de tu dominio base limpio para los subdominios (ej. webzyo.com)
+const MAIN_DOMAIN = 'webzyo.com';
 const MAIN_CSS_URL = `https://${MAIN_DOMAIN}/dist/output.css`;
 
 // ================= CONFIGURACIÓN DE MERCADO PAGO =================
@@ -102,8 +102,8 @@ async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
 
         const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
             sender: {
-                name: process.env.BREVO_SENDER_NAME || 'LandingGen',
-                email: process.env.BREVO_SENDER_EMAIL || 'no-reply@prestigecloser.com'
+                name: process.env.BREVO_SENDER_NAME || 'Webzyo',
+                email: process.env.BREVO_SENDER_EMAIL || 'no-reply@webzyo.com'
             },
             to: [{ email: toEmail, name: toName || 'Usuario' }],
             subject: subject,
