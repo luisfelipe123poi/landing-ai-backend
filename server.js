@@ -988,7 +988,7 @@ app.get('/public-landing/:slug', async (req, res) => {
                 </style>
                 <div id="landinggen-free-badge">
                     <span style="font-size: 12px; font-weight: 500;">
-                        🚀 Esta página fue creada con <strong style="font-weight: 700;">WebZyo</strong>. ¿Quieres una para tu negocio?
+                        🚀 Esta página fue creada con <strong style="font-weight: 700;">WebZyo.com</strong>. ¿Quieres una para tu negocio?
                     </span>
                     <a href="https://${MAIN_DOMAIN}/#precios" target="_blank" class="cta-btn">Crear mi Landing Gratis</a>
                 </div>
