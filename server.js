@@ -281,11 +281,11 @@ app.post('/api/register', async (req, res) => {
             await enviarCorreoBrevo({
                 toEmail: cleanEmail,
                 toName: cleanEmail.split('@')[0],
-                subject: '¡Bienvenido a WebZyo! Tu cuenta Free está lista 🚀',
+                subject: '¡Bienvenido a LandingGen! Tu cuenta Free está lista 🚀',
                 htmlContent: `
                     <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
                         <h2 style="color: #818cf8; margin-top: 0;">¡Hola! Tu cuenta Free ha sido creada con éxito</h2>
-                        <p style="color: #94a3b8; line-height: 1.5;">Ya puedes empezar a crear y explorar tus primeras landing pages profesionales en WebZyo y conectar tu WhatsApp en segundos.</p>
+                        <p style="color: #94a3b8; line-height: 1.5;">Ya puedes empezar a crear y explorar tus primeras landing pages profesionales en LandingGen y conectar tu WhatsApp en segundos.</p>
                         <a href="https://${MAIN_DOMAIN}" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
                     </div>
                 `
@@ -396,7 +396,7 @@ app.post('/api/create-preference', verifyToken, async (req, res) => {
             body: {
                 items: [
                     {
-                        title: `WebZyo - ${infoPlan.nombre} ($${infoPlan.precioUSD} USD)`,
+                        title: `LandingGen - ${infoPlan.nombre} ($${infoPlan.precioUSD} USD)`,
                         quantity: 1,
                         currency_id: 'COP',
                         unit_price: Number(precioEnMonedaLocal)
@@ -986,7 +986,7 @@ app.get('/public-landing/:slug', async (req, res) => {
                         }
                     }
                 </style>
-                <div id="WebZyo-free-badge">
+                <div id="landinggen-free-badge">
                     <span style="font-size: 12px; font-weight: 500;">
                         🚀 Esta página fue creada con <strong style="font-weight: 700;">WebZyo</strong>. ¿Quieres una para tu negocio?
                     </span>
@@ -1027,7 +1027,7 @@ app.get('/', async (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>WebZyo — Páginas web profesionales con plantillas de alta conversión</title>
+            <title>LandingGen — Páginas web profesionales con plantillas de alta conversión</title>
             <link rel="stylesheet" href="${MAIN_CSS_URL}">
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
         </head>
@@ -1036,7 +1036,7 @@ app.get('/', async (req, res) => {
                 <div class="w-16 h-16 bg-indigo-600/20 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-500/30">
                     <i class="fa-solid fa-rocket"></i>
                 </div>
-                <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">WebZyo 🚀</h1>
+                <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">LandingGen 🚀</h1>
                 <p class="text-slate-400 text-base leading-relaxed">Crea la página web de tu negocio y conéctala a WhatsApp en menos de 5 minutos con plantillas profesionales optimizadas.</p>
             </div>
         </body>
