@@ -92,7 +92,7 @@ function esPlantillaPlatinum(templateKey) {
 }
 
 // ================= SERVICIO DE CORREOS BREVO =================
-async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
+async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent, textContent }) {
     try {
         const apiKey = process.env.BREVO_API_KEY;
         if (!apiKey) {
@@ -100,23 +100,44 @@ async function enviarCorreoBrevo({ toEmail, toName, subject, htmlContent }) {
             return false;
         }
 
-        const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+        if (!toEmail || !subject || !htmlContent) {
+            console.warn("[BREVO] Faltan campos obligatorios (toEmail, subject, htmlContent).");
+            return false;
+        }
+
+        const payload = {
             sender: {
                 name: process.env.BREVO_SENDER_NAME || 'Webzyo',
                 email: process.env.BREVO_SENDER_EMAIL || 'no-reply@webzyo.com'
             },
-            to: [{ email: toEmail, name: toName || 'Usuario' }],
-            subject: subject,
-            htmlContent: htmlContent
-        }, {
-            headers: {
-                'accept': 'application/json',
-                'api-key': apiKey,
-                'content-type': 'application/json'
-            }
-        });
+            to: [
+                {
+                    email: String(toEmail).trim().toLowerCase(),
+                    name: toName || 'Usuario'
+                }
+            ],
+            subject,
+            htmlContent
+        };
 
-        console.log(`[BREVO] Correo enviado con éxito a ${toEmail}. MessageId:`, response.data.messageId);
+        if (textContent) {
+            payload.textContent = textContent;
+        }
+
+        const response = await axios.post(
+            'https://api.brevo.com/v3/smtp/email',
+            payload,
+            {
+                headers: {
+                    'accept': 'application/json',
+                    'api-key': apiKey,
+                    'content-type': 'application/json'
+                },
+                timeout: 10000
+            }
+        );
+
+        console.log(`[BREVO] Correo enviado con éxito a ${toEmail}. MessageId:`, response.data?.messageId);
         return true;
     } catch (error) {
         console.error('[BREVO ERROR] Falló el envío de correo:', error.response?.data || error.message);
@@ -465,13 +486,28 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
                     if (payerEmail) {
                         payerEmail = payerEmail.trim().toLowerCase();
-                        
-                        const user = await User.findOne({ email: payerEmail });
-                        if (user) {
-                            const isPlatinumPayment = planDesdeRef.startsWith('platinum_template_') || planDesdeRef.startsWith('platinum_');
+                        const normalizedPlan = String(planDesdeRef || "pro").trim().toLowerCase();
+                        const isPaidAccountPlan = normalizedPlan === 'pro' || normalizedPlan === 'agency_platinum';
+                        const isPlatinumPayment = normalizedPlan.startsWith('platinum_template_') || normalizedPlan.startsWith('platinum_');
 
+                        let user = await User.findOne({ email: payerEmail });
+                        let tempPassword = null;
+
+                        // Si compra 'pro' o 'agency_platinum' y el usuario no existe aún, creamos su cuenta con contraseña temporal
+                        if (!user && isPaidAccountPlan) {
+                            tempPassword = generateTempPassword(10);
+                            user = new User({
+                                email: payerEmail,
+                                name: payerEmail.split('@')[0],
+                                password: tempPassword,
+                                plan: normalizedPlan,
+                                tokens: getTokensForPlan(normalizedPlan)
+                            });
+                        }
+
+                        if (user) {
                             if (isPlatinumPayment) {
-                                const templateKey = planDesdeRef
+                                const templateKey = normalizedPlan
                                     .replace('platinum_template_', '')
                                     .replace('platinum_', '');
                             
@@ -517,8 +553,14 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
                                     }
                                 }
                             } else {
-                                user.plan = planDesdeRef;
-                                user.tokens = getTokensForPlan(planDesdeRef);
+                                // Si es 'pro' o 'agency_platinum' y el usuario ya existía pero no tenía contraseña asignada, generamos una temporal
+                                if (isPaidAccountPlan && !user.password) {
+                                    tempPassword = generateTempPassword(10);
+                                    user.password = tempPassword;
+                                }
+
+                                user.plan = normalizedPlan;
+                                user.tokens = getTokensForPlan(normalizedPlan);
                                 
                                 const planExpirationDate = new Date();
                                 planExpirationDate.setDate(planExpirationDate.getDate() + 30);
@@ -526,15 +568,33 @@ app.post('/api/webhook-mercadopago', async (req, res) => {
 
                                 await user.save();
 
+                                const credentialsSection = isPaidAccountPlan
+                                    ? (tempPassword
+                                        ? `
+                                            <div style="background-color: #1e293b; border: 1px solid #334155; padding: 16px; border-radius: 8px; margin: 18px 0;">
+                                                <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo / Usuario:</strong> ${payerEmail}</p>
+                                                <p style="margin: 4px 0; color: #fbbf24;"><strong>Contraseña temporal:</strong> ${tempPassword}</p>
+                                            </div>
+                                            <p style="color: #94a3b8; font-size: 13px; line-height: 1.5;">Te recomendamos cambiar esta contraseña una vez que inicies sesión en tu cuenta.</p>
+                                        `
+                                        : `
+                                            <div style="background-color: #1e293b; border: 1px solid #334155; padding: 16px; border-radius: 8px; margin: 18px 0;">
+                                                <p style="margin: 4px 0; color: #e2e8f0;"><strong>Correo / Usuario:</strong> ${payerEmail}</p>
+                                                <p style="margin: 4px 0; color: #94a3b8;">Inicia sesión con la contraseña actual de tu cuenta para acceder a las funciones de tu plan.</p>
+                                            </div>
+                                        `)
+                                    : '';
+
                                 try {
                                     await enviarCorreoBrevo({
                                         toEmail: payerEmail,
                                         toName: payerEmail.split('@')[0],
-                                        subject: `¡Suscripción Actualizada a Plan ${planDesdeRef.toUpperCase()}! 🎉`,
+                                        subject: `¡Suscripción Actualizada a Plan ${normalizedPlan.toUpperCase()}! 🎉`,
                                         htmlContent: `
                                             <div style="font-family: Arial, sans-serif; background-color: #0f172a; color: #ffffff; padding: 30px; border-radius: 12px; max-width: 600px; margin: auto;">
                                                 <h2 style="color: #818cf8; margin-top: 0;">¡Pago de Suscripción Aprobado!</h2>
-                                                <p style="color: #94a3b8; line-height: 1.5;">Tu cuenta ha sido actualizada al plan <strong>${planDesdeRef.toUpperCase()}</strong> con éxito.</p>
+                                                <p style="color: #94a3b8; line-height: 1.5;">Tu cuenta ha sido actualizada al plan <strong>${normalizedPlan.toUpperCase()}</strong> con éxito.</p>
+                                                ${credentialsSection}
                                                 <a href="https://${MAIN_DOMAIN}" style="display: inline-block; background-color: #4f46e5; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 20px;">Ir a mi Panel</a>
                                             </div>
                                         `
