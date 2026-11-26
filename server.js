@@ -1062,28 +1062,27 @@ app.get('/public-landing/:slug', async (req, res) => {
         }
 
         // INYECCIÓN DE SCRIPT DE MÉTRICAS (VISITAS, CLICS Y RETENCIÓN)
-        const trackedLandingId = landingData.landingId || String(landingData._id);
+        const trackedLandingId = String(landingData.landingId || landingData._id);
+        const backendTrackUrl =
+            (process.env.PUBLIC_BACKEND_URL || 'https://landing-ai-backend-1oyg.onrender.com').replace(/\/+$/, '') +
+            '/api/metrics/track';
+
         const trackerScriptHtml = `
 <script data-webzyo-tracker="true">
 (function() {
-  const LANDING_ID = ${JSON.stringify(String(trackedLandingId))};
-  const TRACK_URL = ${JSON.stringify(`${req.protocol}://${req.get('host')}/api/metrics/track`)};
+  const LANDING_ID = ${JSON.stringify(trackedLandingId)};
+  const TRACK_URL = ${JSON.stringify(backendTrackUrl)};
   const startTime = Date.now();
   let sentDwell = false;
 
   function sendEvent(payload) {
     const body = JSON.stringify({ landingId: LANDING_ID, ...payload });
-    if (navigator.sendBeacon) {
-      const blob = new Blob([body], { type: 'application/json' });
-      navigator.sendBeacon(TRACK_URL, blob);
-    } else {
-      fetch(TRACK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        keepalive: true
-      }).catch(() => {});
-    }
+    fetch(TRACK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true
+    }).catch(() => {});
   }
 
   sendEvent({ eventType: 'view' });
