@@ -1474,6 +1474,106 @@ app.put('/api/landings/:landingId', verifyToken, async (req, res) => {
     }
 });
 
+const crypto = require('crypto');
+
+const ADMIN_SESSIONS = new Set();
+let ADMIN_PASSWORD_HASH = crypto
+  .createHash('sha256')
+  .update(process.env.ADMIN_DASHBOARD_PASSWORD || 'WebZyoAdmin2026!')
+  .digest('hex');
+
+function requireAdminToken(req, res, next) {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!token || !ADMIN_SESSIONS.has(token)) {
+    return res.status(401).json({ ok: false, error: 'No autorizado' });
+  }
+  next();
+}
+
+app.post('/api/admin/auth', (req, res) => {
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ ok: false, error: 'Contraseña requerida' });
+
+  const hash = crypto.createHash('sha256').update(String(password)).digest('hex');
+  if (hash !== ADMIN_PASSWORD_HASH) {
+    return res.status(401).json({ ok: false, error: 'Contraseña incorrecta' });
+  }
+
+  const token = crypto.randomBytes(24).toString('hex');
+  ADMIN_SESSIONS.add(token);
+  return res.json({ ok: true, token });
+});
+
+app.post('/api/admin/password', requireAdminToken, (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!newPassword || String(newPassword).length < 6) {
+    return res.status(400).json({ ok: false, error: 'Mínimo 6 caracteres' });
+  }
+  const currentHash = crypto.createHash('sha256').update(String(currentPassword || '')).digest('hex');
+  if (currentHash !== ADMIN_PASSWORD_HASH) {
+    return res.status(401).json({ ok: false, error: 'Contraseña actual incorrecta' });
+  }
+  ADMIN_PASSWORD_HASH = crypto.createHash('sha256').update(String(newPassword)).digest('hex');
+  return res.json({ ok: true });
+});
+
+app.get('/api/admin/overview', requireAdminToken, async (req, res) => {
+  try {
+    const [usersDocs, landingsDocs, metricsDocs] = await Promise.all([
+      User.find({}).lean(),
+      Landing.find({}).lean(),
+      LandingMetric.find({}).lean()
+    ]);
+
+    const metricsById = new Map();
+    for (const m of metricsDocs) {
+      metricsById.set(String(m.landingId), m);
+    }
+
+    const userPlanByEmail = new Map();
+    const users = usersDocs.map((u) => {
+      const email = String(u.email || '').trim().toLowerCase();
+      const plan = u.plan || 'free';
+      userPlanByEmail.set(email, plan);
+      return {
+        email,
+        name: u.name || (email ? email.split('@')[0] : 'Usuario'),
+        plan
+      };
+    });
+
+    const landings = landingsDocs.map((l) => {
+      const idStr = String(l.landingId || l._id);
+      const m = metricsById.get(idStr) || metricsById.get(String(l._id)) || {};
+      const ownerEmail = String(l.userEmail || '').trim().toLowerCase();
+      const views = Number(m.views) || 0;
+      const clicks = Number(m.clicks) || 0;
+      const totalDwell = Number(m.totalDwellSeconds) || 0;
+
+      return {
+        landingId: idStr,
+        title: l.business || l.title || l.slug || l.subdomain || 'Sin título',
+        slug: l.slug || l.subdomain || m.slug || '',
+        url: l.url || (l.slug ? `https://${l.slug}.${MAIN_DOMAIN}` : ''),
+        ownerEmail,
+        ownerName: ownerEmail ? ownerEmail.split('@')[0] : 'Usuario',
+        plan: userPlanByEmail.get(ownerEmail) || 'free',
+        createdAt: l.createdAt || null,
+        views,
+        clicks,
+        avgDwellSeconds: views > 0 ? totalDwell / views : 0,
+        engagedOver30s: Number(m.engagedOver30s) || 0
+      };
+    });
+
+    return res.json({ ok: true, users, landings });
+  } catch (err) {
+    console.error('Error en GET /api/admin/overview:', err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en el puerto ${PORT}`);
 });
