@@ -1061,6 +1061,59 @@ app.get('/public-landing/:slug', async (req, res) => {
             }
         }
 
+        // INYECCIÓN DE SCRIPT DE MÉTRICAS (VISITAS, CLICS Y RETENCIÓN)
+        const trackedLandingId = landingData.landingId || String(landingData._id);
+        const trackerScriptHtml = `
+<script data-webzyo-tracker="true">
+(function() {
+  const LANDING_ID = ${JSON.stringify(String(trackedLandingId))};
+  const TRACK_URL = ${JSON.stringify(`${req.protocol}://${req.get('host')}/api/metrics/track`)};
+  const startTime = Date.now();
+  let sentDwell = false;
+
+  function sendEvent(payload) {
+    const body = JSON.stringify({ landingId: LANDING_ID, ...payload });
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: 'application/json' });
+      navigator.sendBeacon(TRACK_URL, blob);
+    } else {
+      fetch(TRACK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true
+      }).catch(() => {});
+    }
+  }
+
+  sendEvent({ eventType: 'view' });
+
+  document.addEventListener('click', function(e) {
+    if (e.target.closest('a, button')) {
+      sendEvent({ eventType: 'click' });
+    }
+  });
+
+  function reportDwell() {
+    if (sentDwell) return;
+    sentDwell = true;
+    const dwellSeconds = Math.round((Date.now() - startTime) / 1000);
+    sendEvent({ eventType: 'dwell', dwellSeconds });
+  }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') reportDwell();
+  });
+  window.addEventListener('pagehide', reportDwell);
+})();
+</script>`;
+
+        if (renderedHtml.includes('</body>')) {
+            renderedHtml = renderedHtml.replace('</body>', trackerScriptHtml + '\n</body>');
+        } else {
+            renderedHtml += trackerScriptHtml;
+        }
+
         if (!renderedHtml.includes(MAIN_CSS_URL)) {
             if (renderedHtml.includes('</head>')) {
                 renderedHtml = renderedHtml.replace('</head>', `<link rel="stylesheet" href="${MAIN_CSS_URL}"></head>`);
@@ -1076,6 +1129,145 @@ app.get('/public-landing/:slug', async (req, res) => {
         console.error('Error interno al servir la landing pública:', error);
         res.status(500).send('Error interno del servidor');
     }
+});
+
+const landingMetricSchema = new mongoose.Schema({
+  landingId: { type: String, required: true, unique: true, index: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  userEmail: { type: String, default: '', index: true },
+  slug: { type: String, default: '' },
+  views: { type: Number, default: 0 },
+  clicks: { type: Number, default: 0 },
+  totalDwellSeconds: { type: Number, default: 0 },
+  engagedOver30s: { type: Number, default: 0 },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const LandingMetric = mongoose.models.LandingMetric || mongoose.model('LandingMetric', landingMetricSchema);
+
+// Recibe eventos desde las páginas publicadas (visita, clic, tiempo de retención)
+app.post('/api/metrics/track', async (req, res) => {
+  try {
+    const { landingId, eventType, dwellSeconds = 0 } = req.body || {};
+    if (!landingId || !eventType) {
+      return res.status(400).json({ ok: false, error: 'landingId y eventType son obligatorios' });
+    }
+
+    const cleanLandingId = String(landingId).trim();
+
+    // Buscar la landing por tu campo custom `landingId` o por `_id` de MongoDB
+    const orQuery = [{ landingId: cleanLandingId }];
+    if (mongoose.Types.ObjectId.isValid(cleanLandingId)) {
+      orQuery.push({ _id: cleanLandingId });
+    }
+
+    const landingDoc = await Landing.findOne({ $or: orQuery }).lean().catch(() => null);
+
+    let ownerId = null;
+    let ownerEmail = '';
+    let slug = '';
+
+    if (landingDoc) {
+      ownerEmail = String(landingDoc.userEmail || '').trim().toLowerCase();
+      slug = landingDoc.slug || landingDoc.subdomain || '';
+
+      if (ownerEmail) {
+        const ownerUser = await User.findOne({ email: ownerEmail }).select('_id').lean().catch(() => null);
+        if (ownerUser) {
+          ownerId = ownerUser._id;
+        }
+      }
+    }
+
+    const setFields = {
+      updatedAt: new Date(),
+      ...(ownerId ? { userId: ownerId } : {}),
+      ...(ownerEmail ? { userEmail: ownerEmail } : {}),
+      ...(slug ? { slug } : {})
+    };
+
+    const $inc = {};
+    if (eventType === 'view') {
+      $inc.views = 1;
+    } else if (eventType === 'click') {
+      $inc.clicks = 1;
+    } else if (eventType === 'dwell') {
+      const secs = Math.min(Math.max(Number(dwellSeconds) || 0, 0), 3600);
+      $inc.totalDwellSeconds = secs;
+      if (secs >= 30) {
+        $inc.engagedOver30s = 1;
+      }
+    }
+
+    const canonicalId = landingDoc?.landingId || cleanLandingId;
+
+    await LandingMetric.findOneAndUpdate(
+      { landingId: String(canonicalId) },
+      {
+        $set: setFields,
+        ...(Object.keys($inc).length ? { $inc } : {})
+      },
+      { upsert: true, new: true }
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error en /api/metrics/track:', err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Devuelve las métricas de las páginas del usuario autenticado
+app.get('/api/user/metrics', verifyToken, async (req, res) => {
+  try {
+    const userEmail = String(req.user?.email || '').trim().toLowerCase();
+    if (!userEmail) {
+      return res.status(401).json({ ok: false, error: 'No autorizado' });
+    }
+
+    const user = await User.findOne({ email: userEmail }).select('_id email landings').lean();
+    if (!user) {
+      return res.status(404).json({ ok: false, error: 'Usuario no encontrado' });
+    }
+
+    // Obtener todas las landings del usuario desde la colección Landing
+    const userLandings = await Landing.find({ userEmail }).lean();
+
+    // Buscar sus métricas tanto por userEmail, userId o por la lista de landingIds
+    const landingIdsList = userLandings.map(l => String(l.landingId || l._id));
+    const metricsDocs = await LandingMetric.find({
+      $or: [
+        { userEmail },
+        { userId: user._id },
+        ...(landingIdsList.length ? [{ landingId: { $in: landingIdsList } }] : [])
+      ]
+    }).lean();
+
+    const metricsMap = new Map(metricsDocs.map(m => [String(m.landingId), m]));
+
+    const pages = userLandings.map((l) => {
+      const idStr = String(l.landingId || l._id);
+      const m = metricsMap.get(idStr) || metricsMap.get(String(l._id)) || {};
+      const views = m.views || 0;
+      const clicks = m.clicks || 0;
+      const totalDwell = m.totalDwellSeconds || 0;
+
+      return {
+        landingId: idStr,
+        title: l.business?.name || l.businessName || l.title || l.slug || l.subdomain || 'Landing',
+        slug: l.slug || l.subdomain || m.slug || '',
+        views,
+        clicks,
+        avgDwellSeconds: views > 0 ? totalDwell / views : 0,
+        engagedOver30s: m.engagedOver30s || 0
+      };
+    });
+
+    res.json({ ok: true, pages });
+  } catch (err) {
+    console.error('Error en /api/user/metrics:', err);
+    res.status(500).json({ ok: false, error: 'Error obteniendo métricas' });
+  }
 });
 
 // ================= RUTA RAÍZ PRINCIPAL =================
