@@ -1269,6 +1269,82 @@ app.get('/api/user/metrics', verifyToken, async (req, res) => {
   }
 });
 
+// ================= MODELO Y RUTAS PARA BANNER GLOBAL DE WWW.WEBZYO.COM =================
+const siteBannerSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, default: 'global_home_banner' },
+    enabled: { type: Boolean, default: false },
+    type: { type: String, enum: ['promo', 'update', 'news', 'alert'], default: 'promo' },
+    position: { type: String, enum: ['top', 'bottom'], default: 'top' },
+    dismissible: { type: Boolean, default: true },
+    message: { type: String, default: '' },
+    ctaLabel: { type: String, default: '' },
+    ctaUrl: { type: String, default: '' },
+    updatedAt: { type: Date, default: Date.now }
+  },
+  { collection: 'site_banners' }
+);
+
+const SiteBanner = mongoose.models.SiteBanner || mongoose.model('SiteBanner', siteBannerSchema);
+
+// Lectura pública para www.webzyo.com
+app.get('/api/site-banner', async (req, res) => {
+  try {
+    const doc = await SiteBanner.findOne({ key: 'global_home_banner' }).lean();
+    const banner = doc || {
+      enabled: false,
+      type: 'promo',
+      position: 'top',
+      dismissible: true,
+      message: '',
+      ctaLabel: '',
+      ctaUrl: '',
+      updatedAt: new Date().toISOString()
+    };
+    return res.json({ ok: true, banner });
+  } catch (err) {
+    console.error('Error en GET /api/site-banner:', err);
+    return res.status(500).json({ ok: false, error: 'Error al consultar el banner' });
+  }
+});
+
+// Guardado / actualización desde tu panel de empresa
+app.post('/api/site-banner', async (req, res) => {
+  try {
+    const { enabled, type, position, dismissible, message, ctaLabel, ctaUrl } = req.body || {};
+
+    const validTypes = ['promo', 'update', 'news', 'alert'];
+    const cleanType = validTypes.includes(type) ? type : 'promo';
+    const cleanPosition = position === 'bottom' ? 'bottom' : 'top';
+    const cleanMessage = String(message || '').trim().slice(0, 300);
+    const cleanCtaLabel = String(ctaLabel || '').trim().slice(0, 60);
+    const rawCtaUrl = String(ctaUrl || '').trim().slice(0, 300);
+    const cleanCtaUrl = /^https?:\/\//i.test(rawCtaUrl) ? rawCtaUrl : '';
+
+    const updated = await SiteBanner.findOneAndUpdate(
+      { key: 'global_home_banner' },
+      {
+        $set: {
+          enabled: Boolean(enabled) && Boolean(cleanMessage),
+          type: cleanType,
+          position: cleanPosition,
+          dismissible: dismissible !== false,
+          message: cleanMessage,
+          ctaLabel: cleanCtaLabel,
+          ctaUrl: cleanCtaUrl,
+          updatedAt: new Date()
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    ).lean();
+
+    return res.json({ ok: true, banner: updated });
+  } catch (err) {
+    console.error('Error en POST /api/site-banner:', err);
+    return res.status(500).json({ ok: false, error: 'Error al guardar el banner' });
+  }
+});
+
 // ================= RUTA RAÍZ PRINCIPAL =================
 app.get('/', async (req, res) => {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
