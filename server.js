@@ -158,20 +158,33 @@ function getTokensForPlan(plan) {
 
 async function handleGetLandings(req, res) {
     try {
-        const user = await User.findOne({ email: req.user.email });
-        if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+        const cleanEmail = String(req.user?.email || '').trim().toLowerCase();
+        const user = await User.findOne({ email: cleanEmail })
+            .select('landings unlockedPlatinumTemplates')
+            .lean();
 
-        const fullLandings = await Landing.find({ userEmail: req.user.email });
-        
-        const mappedLandings = (user.landings || []).map(l => {
-            const dbLanding = fullLandings.find(fl => fl.landingId === l.landingId);
-            return {
-                ...(l.toObject ? l.toObject() : l),
-                templateKey: l.templateKey || dbLanding?.templateKey || 'cafe'
-            };
+        if (!user) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const fullLandings = await Landing.find({ userEmail: cleanEmail })
+            .select('landingId templateKey')
+            .lean();
+
+        const templateById = new Map(
+            fullLandings.map(fl => [String(fl.landingId), fl.templateKey])
+        );
+
+        const mappedLandings = (user.landings || []).map(l => ({
+            ...l,
+            templateKey: l.templateKey || templateById.get(String(l.landingId)) || 'cafe'
+        }));
+
+        res.json({
+            success: true,
+            landings: mappedLandings,
+            unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || []
         });
-
-        res.json({ success: true, landings: mappedLandings, unlockedPlatinumTemplates: user.unlockedPlatinumTemplates || [] });
     } catch (error) {
         console.error('Error al obtener las landings:', error);
         res.status(500).json({ error: 'Error al obtener las landings' });
